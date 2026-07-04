@@ -239,7 +239,21 @@ networkgeometry/
   tests/              # unit tests per module
 ```
 
-**Data contract** between modules: `DataMatrix = {structure, layer, run, matrix[d × n_states], states}` so activity paths are interchangeable and the AUC engine is agnostic to what filled the matrix.
+**Data contract** between modules:
+
+```
+DataMatrix = {
+  structure,               # e.g. "day", "month", "years", "hierarchy", "flat"
+  layer,                   # 0..25
+  run,                     # template/context index
+  matrix,                  # ℝ^{d × n_states}, columns = states, in `states` order
+  states,                  # ordered column labels + canonical index, e.g.
+                           #   [("Monday",1), ("Tuesday",2), … ("Sunday",7)]
+                           #   defines n_states = len(states); records exclusions (e.g. "May")
+}
+```
+
+`states` is the metadata that says *what each column of `matrix` is* — required for consistent column ordering across runs, the circle-fit angular-order check (needs the canonical index), Gram/plot labeling, and polysemy bookkeeping. With this contract the AUC engine is agnostic to *what filled* the matrix, and activity paths are interchangeable.
 
 ---
 
