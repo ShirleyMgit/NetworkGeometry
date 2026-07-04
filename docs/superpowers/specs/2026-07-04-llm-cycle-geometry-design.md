@@ -262,8 +262,8 @@ DataMatrix = {
 1. The module pipeline above (v1 = `stimuli`, `extraction`, `sae`, `geometry`, `subspace`, `stats`).
 2. `docs/SAE-explainer.md` — plain-language explanation of SAEs (superposition, dictionary learning, Gemma Scope, how `z` is used here), written alongside this spec.
 3. Part-1 figures (manifolds, Gram, circularity-vs-layer, SAE cluster).
-4. Part-2 results (AUC-vs-layer per contrast, `ΔAUC` table + CIs, null distributions, `V`-side stability).
-5. Short findings write-up.
+4. Part-2 results (AUC-vs-layer per contrast, `ΔAUC` table + across-run SEM, null distributions, `V`-side stability).
+5. **Findings memo** — `docs/findings/cycle-geometry-findings.md`, a ~2–4 page markdown write-up in the same question→method→result→interpretation style as this repo's paper summaries. Produced **semi-automatically**: `stats/` emits `results/summary.json` + CSV tables and `figures/` holds the plots; a small `report/` builder fills a template so headline numbers come *from the artifacts* (no hand-transcription), with interpretation written on top. It is a **living draft** that fills in as Parts 1→2 complete. Sections: TL;DR; Part 1 (strict + generalized legs, cleanest layer, SAE check); Part 2 (gate-passing layers, the AUC ladder table with graded ordering, `U`-cross + `V`-stability, permutation p-values reported **both FDR and Bonferroni**); interpretation (honest, either-sign); scope & limitations (single-model, across-context inference per §5.5); reproducibility (commit hash + config snapshot).
 
 ---
 
