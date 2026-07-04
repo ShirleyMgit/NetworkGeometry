@@ -108,8 +108,28 @@ Extract `blocks.{l}.hook_resid_post` at the **final token**, **all 26 layers**, 
 4. **Layer sweep** — circularity-vs-layer curve; selects the layers Part 2 focuses on.
 
 ### 4.3 Reproduction-fidelity details (mirror the Symmetry paper)
-- **Exclude "May"** from the month PCA basis (polysemy: also a verb).
-- Use the **uncentered Gram** variant for years (preserves Toeplitz structure); mean-centered for cycles. Keep both as options.
+
+To make Part 1 a *strict* reproduction (the validation gate of §4.5), these choices from the Symmetry paper must be matched exactly. Each is implemented as an explicit, defaulted option so we can reproduce the paper and then test robustness by toggling it.
+
+**(a) Strict-reproduction leg vs. generalized leg.**
+Part 1 is run twice:
+1. **Strict leg** — the paper's *exact* single prompt template, to reproduce their figures: months `"The month of the year is {X}"`, years `"In the year {X}"`. Token read position = **final token** (`T−1`). Layers = **all 26**. This leg has one run per structure (no template averaging). For years, the strict leg uses the **paper's full range 1700–2020** (multi-token year strings are fine — we read the final token regardless of how many tokens the year splits into). *Note the difference from Part 2:* the §3.1 years **control** is a smaller (~30), size/frequency-matched, single-token-preferred subset for the cross-structure comparison; the strict leg here is purely for reproducing the years manifold and is not used as a Part-2 control.
+2. **Generalized leg** — our multi-template pool (§3.4), averaging over templates. If the circle survives the generalized leg, it isn't an artifact of one prompt. The strict leg is the gate; the generalized leg feeds Part 2.
+
+**(b) Polysemy handling — "May", and the general rule.**
+"May" is polysemous (month / modal verb / given name), so its final-token activation blends senses and distorts the month geometry. The paper's fix, made precise:
+- When computing the **month PCA basis**, use only the **11 non-May months**. Both the **centering mean** and the **principal components** are computed from those 11 vectors — May contributes to neither.
+- For visualization, **project May back** onto the resulting PC1–PC2 plane as a separate marker. Expect it to sit *off* the clean circle — that displacement is itself the polysemy signature (cf. the paper's Appendix Fig. 14, where a late layer resolves it).
+- **General rule (not just May):** before computing any basis, flag polysemous state tokens and exclude them from the *basis* computation while still projecting them back. Month words to watch: **March** (verb "to march"), **August** (adjective "august"), **May**. Day words are generally clean, but confirm tokenization of "Sun"/"Sunday" etc. Record which tokens were excluded per structure.
+- **Consistency with Part 2:** apply the *same* May/polysemy handling when building the month activation matrices `A` in Part 2 (either exclude May from the matrix, or rely on disambiguating templates and document the choice) — otherwise Part 1 and Part 2 month geometries won't correspond.
+
+**(c) Centering convention — mean-centered (cycles) vs. uncentered Gram (open sequences).**
+Let `W ∈ ℝ^{n_states × d}` be the per-state representation matrix (rows = states).
+- **Mean-centered (default for cycles — days, months):** subtract the across-states mean, `W̄ = W − 1·μᵀ` with `μ = mean over rows`. PCA basis = top singular vectors of `W̄`; Gram `G_c = W̄ W̄ᵀ`. Centering removes the shared DC component so the *circular* variation dominates the top PCs.
+- **Uncentered Gram (default for years — open sequences):** use `G_u = W Wᵀ` with **no mean subtraction**. Rationale: for a translation-symmetric open sequence, `G_u` is approximately **Toeplitz** — constant along diagonals, `G_u[i,j] ≈ g(|i−j|)`, the algebraic signature of translation invariance and of the open-boundary Fourier modes the paper predicts. Mean-centering subtracts row/column means and **breaks the exact Toeplitz form**, muddying the rippled-line structure. So years are analyzed uncentered to preserve it.
+- **Both are options for every structure** (a `centering ∈ {mean, none}` flag), reported side-by-side as a robustness check. Defaults: cycles → `mean`; years → `none`.
+
+> **Toeplitz, briefly:** a matrix whose value depends only on the index *difference* `i−j` (each descending diagonal is constant). It is what you get when pairwise similarity depends only on distance along the sequence — i.e., translation symmetry — which is exactly the Symmetry paper's core assumption for calendar concepts.
 
 ### 4.4 SAE reproduction check (secondary, Engels-style)
 Load the Gemma Scope SAE at a clean layer, encode day/month activations, cluster decoder directions by cosine similarity, and confirm a cluster whose reconstructed activations form a circle in PCA. Qualitative confirmation the circle lives in the SAE feature dictionary. **SAE appears only here.**
