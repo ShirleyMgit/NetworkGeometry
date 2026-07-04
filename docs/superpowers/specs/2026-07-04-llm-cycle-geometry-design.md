@@ -40,12 +40,41 @@ We test whether a frozen LLM represents cyclic concepts (day-of-week, month-of-y
 | Cycle | Day-of-week | 7 (Mon…Sun) | Ring (periodic) |
 | Cycle | Month | 12 (Jan…Dec) | Ring (periodic) |
 | Near-control (boundary axis) | Years, single-token (e.g. 1990–2025) | ~30 | Open 1D sequence |
-| Non-seq control (primary) | Community / cluster set | ~12 | Clustered, non-ordered |
-| Non-seq control (floor) | Flat unrelated set | ~12 | Unstructured |
+| Non-seq control (structured) | Community / cluster set (3 categories × 4) | 12 | Clustered, non-ordered |
+| Non-seq control (structured) | Hierarchy / taxonomy (3-level) | 12 leaves | Tree, non-ordered |
+| Non-seq control (floor) | Flat unrelated set | 12 | Unstructured |
 
 - Years is **not** a "non-cyclic foil": per the Symmetry paper, months and years are the *same* translation-symmetric 1D object differing only in **boundary conditions** (months = closed Fourier series → ring; years = open-boundary Fourier series → rippled line). It is a **near-control on the periodicity/boundary axis** — we may find it *shares* the cycle subspace, which motivates Phase 3.
-- The **non-sequential** controls (community, flat) are the true "should not share the sequence subspace" controls. Community has genuine (non-1D) internal structure, so a non-generalization result is meaningful ("represented, but not in the sequence subspace"); flat is an unstructured floor.
+- The **non-sequential** controls (community, hierarchy, flat) are the "should not share the sequence subspace" controls, ordered by depth of structure. **Community** and **hierarchy** have genuine (non-1D) internal structure, so a non-generalization result is meaningful ("represented, but not in the sequence subspace"); **flat** is an unstructured floor. Both community and hierarchy must clear the within-structure gate (§5.3) for their null cross-AUC to be interpretable — taxonomies clear it reliably (LLMs represent categorical hierarchies robustly; Park et al., *Geometry of Categorical Concepts*).
 - **Matching:** controls matched to cycles on set-size band, single-token-ness, corpus-frequency band, and template slots, so a null reflects *structure*, not surface confounds.
+
+**Concrete control sets (v1):**
+
+*Community* — 3 time-neutral semantic categories × 4 single-token members = 12; no order within or across; Gram matrix should show **block** structure, not circulant banding:
+
+Categories are **man-made objects** (disjoint from the taxonomy's living-things domain, so the two controls share no items):
+
+| Community | Members |
+|---|---|
+| Furniture | chair, table, sofa, lamp |
+| Clothing | shirt, hat, coat, sock |
+| Kitchen | cup, plate, fork, spoon |
+
+*Hierarchy* — 3-level taxonomy, 12 single-token leaves; Gram matrix should show **nested-block** structure (mammals tight → animals looser → living-things loosest):
+
+```
+living things
+├── animals
+│   ├── mammals:  dog, cat, horse
+│   └── birds:    robin, eagle, owl
+└── plants
+    ├── trees:    oak, pine, maple
+    └── flowers:  rose, tulip, daisy
+```
+
+*Flat* — 12 nouns each from a distinct category (no two share one, none overlapping the community or hierarchy sets), no cluster structure: river, cloud, book, stone, road, key, ship, bridge, window, candle, mirror, ticket.
+
+Implementation caveats for all control sets: verify each word is a **single token** in Gemma's tokenizer and avoid **polysemy** (e.g. "orange" = fruit *and* color, or "saw" = tool *and* verb, would smuggle in extra structure). Community (man-made objects), hierarchy (living things), and flat (mixed, distinct categories) share no items, so the three structured/floor controls are genuinely independent.
 
 ### 3.2 States are a config parameter (not constants)
 
@@ -141,10 +170,10 @@ For each structure and layer, compute **within-structure, different-context AUC*
 | 1 | Within-structure, diff. context | day → day | different | either | **Reference/gate.** Must be ≫ chance. |
 | 2 | Across circular structures | day ↔ month | matched | shared | **Core abstraction test.** High ⇒ shared cycle code. |
 | 3 | Across circular structures, diff. context | day ↔ month | different | structure-specific | **Robustness.** Survives context change ⇒ not phrasing-bound. |
-| 4 | Circular → non-circular (control) | day → years / community / flat | any | either | **Specificity.** years (near) > community > flat ≈ chance. |
+| 4 | Circular → non-circular (control) | day → years / community / hierarchy / flat | any | either | **Specificity.** years (near) > community ≈ hierarchy > flat ≈ chance. |
 
 **Predicted ordering if an abstract cycle code exists:**
-`AUC₁(within) ≳ AUC₂ ≈ AUC₃ (cross-cycle) > AUC₄(years) > AUC₄(community) > AUC₄(flat) ≈ chance`
+`AUC₁(within) ≳ AUC₂ ≈ AUC₃ (cross-cycle) > AUC₄(years) > AUC₄(community) ≈ AUC₄(hierarchy) > AUC₄(flat) ≈ chance`
 
 Both cross-cycle directions are run (day→month and month→day).
 
