@@ -156,13 +156,19 @@ SVD: `A = U Σ Vᵀ`.
 - **`U` (activation side)** — hidden-unit modes ("cell assemblies"), directions in the shared `ℝ^d`. Cross-projection well-defined across any state count → **used for cross-structure**.
 - **`V` (feature side)** — mode-shapes over that structure's own states. State axes don't correspond across different-size structures → **used within-structure only**.
 
-### 5.2 The AUC engine (leave-one-run-out)
-For source structure `s`, target structure `s′`, held-out run `j`:
-1. Source PCs `U_s` = left singular vectors of the **mean of held-in runs** of `s` (mirrors eLife held-out-runs averaging).
-2. Project the **held-out** target run: `P = U_sᵀ A[s′,l,j]`.
-3. Cumulative variance of the target captured by the top-`k` source PCs, normalized by target total variance:
-   `M_k = Σ_{i≤k} ‖U_s[:,i]ᵀ A[s′,l,j]‖² / ‖A[s′,l,j]‖²`.
-4. **AUC** = area under `M_k` vs `k`. Average over folds `j`. (Chance ≈ 0.5 = diagonal curve = variance spread uniformly across modes.)
+### 5.2 The AUC engine — and why leave-one-out is only needed *within* a structure
+
+Core projection (produces the cumulative-variance curve whose area is the AUC):
+1. Source PCs `U_s` = left singular vectors of the source activation matrix, ordered by variance.
+2. Project the target matrix `A_{s′}`: `P = U_sᵀ A_{s′}`.
+3. Cumulative variance captured by the top-`k` source PCs, normalized by target total variance:
+   `M_k = Σ_{i≤k} ‖U_s[:,i]ᵀ A_{s′}‖² / ‖A_{s′}‖²`.
+4. **AUC** = area under `M_k` vs `k`. (Chance ≈ 0.5 = diagonal curve = variance spread uniformly across modes.)
+
+**When leave-one-out is required — and when it is not.** Leave-one-run-out exists solely to prevent **train/test leakage**, and leakage is only possible when source and target are the *same* words.
+
+- **Within-structure (`s = s′`, comparison 1 / gate):** source and target are the same structure and the same words, so projecting onto PCs built from the same data is trivially ≈100% (leakage). We **must hold out**: source PCs from the **mean of held-in runs**, project the **held-out run `j`**, average over folds `j` (leave-one-run-out). This is the honest within-structure ceiling.
+- **Cross-structure (`s ≠ s′`, comparisons 2–4):** source and target are **different structures with different words/states** — a day subspace has never "seen" month data regardless of which runs build it, so **there is no leakage and no leave-one-out is needed.** Compute `U_s` from **all** source runs (mean → most stable PCs) and project the target directly. Replicate runs are still used here, but only to produce **error bars** (bootstrap over runs, §5.5), *not* to prevent leakage.
 
 Within a fixed-source contrast the source PC count (curve length) is constant → AUCs are directly comparable.
 
@@ -191,9 +197,9 @@ Both cross-cycle directions are run (day→month and month→day).
 Same leave-one-run-out setup as comparison 1, read off the **`V` side**: does the *pattern over states* recur across contexts? A representational-stability score and the within reference for the feature side. **Never run across different cycles.**
 
 ### 5.5 Statistics
-- **CV:** leave-one-run-out.
-- **Null (chance):** shuffle the `d` feature-identity rows of the target matrix before projection → AUC null ≈ 0.5; per-contrast p-values.
-- **Effect:** `ΔAUC = within − cross`, bootstrap CIs over folds; graded-tier comparison across controls.
+- **Leakage control:** leave-one-run-out **only for within-structure** (comparison 1), where source and target share words. **Cross-structure comparisons (2–4) use all runs** — different words ⇒ no leakage — with `U_s` from all source runs and the target projected directly.
+- **Null (chance):** shuffle the `d` feature-identity rows of the target matrix before projection → AUC null ≈ 0.5; per-contrast p-values. (Applies to both within and cross.)
+- **Effect & error bars:** `ΔAUC = within − cross` (within = its LOO ceiling, cross = all-runs estimate at the same layer), with **bootstrap CIs over runs** — resampling within-structure LOO folds for the within term and resampling source/target runs for the cross term. Graded-tier comparison across controls.
 - **Multiple comparisons:** correction applied only over the surviving `(layer × comparison)` set from Stage 2 (kept small by the gate).
 - **Repeated-measures units:** template folds (later, models). No subject dimension — reported honestly as such.
 
