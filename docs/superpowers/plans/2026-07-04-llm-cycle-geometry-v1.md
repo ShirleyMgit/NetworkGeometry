@@ -1150,7 +1150,11 @@ def extract(model, prompts_by_run, states, structure, layers) -> list:
 Add to `pyproject.toml` under `[tool.pytest.ini_options]`:
 ```toml
 markers = ["integration: requires downloading a model"]
+addopts = "-m 'not integration'"
 ```
+
+> **AMENDED (post-implementation):** the original brief registered the marker but omitted `addopts`, so a plain `uv run pytest` (used by every later task's "run the full suite" step) would silently include the gpt2-downloading integration test every time — adding 20-50s and a network dependency to every routine test run. `addopts = "-m 'not integration'"` makes integration tests opt-in only (`pytest -m integration`), restoring a fast, network-free default run. Verified: `uv run pytest -q` → `33 passed, 1 deselected`; `uv run pytest -q -m integration` → `1 passed, 33 deselected`.
+
 ```bash
 git add networkgeometry/extraction/ tests/extraction/ pyproject.toml
 git commit -m "feat: TransformerLens extraction to DataMatrix (final-token resid)"
