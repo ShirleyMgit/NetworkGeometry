@@ -1,0 +1,18 @@
+import numpy as np
+import pytest
+from networkgeometry.types import State
+
+transformer_lens = pytest.importorskip("transformer_lens")
+
+@pytest.mark.integration
+def test_extract_shapes_with_gpt2():
+    from networkgeometry.extraction.activations import load_model, extract
+    model = load_model("gpt2", device="cpu")
+    states = (State("Monday", 1), State("Tuesday", 2), State("Wednesday", 3))
+    prompts = {0: ["A day: Monday", "A day: Tuesday", "A day: Wednesday"],
+               1: ["See you Monday", "See you Tuesday", "See you Wednesday"]}
+    dms = extract(model, prompts, states, "day", layers=[0, 5])
+    by_layer = {dm.layer for dm in dms}
+    assert by_layer == {0, 5}
+    for dm in dms:
+        assert dm.matrix.shape[1] == 3 and dm.matrix.shape[0] == model.cfg.d_model
