@@ -870,11 +870,13 @@ git commit -m "feat: stimuli structures + template pools + prompt builder"
 - Create: `networkgeometry/geometry/part1.py`
 - Test: `tests/geometry/test_part1.py`
 
+> **AMENDED (pre-dispatch, discovered during Task 8 review):** the original interface below took no `excluded` parameter, so it could not implement the "May handling" this task is named for (spec §4.3(b): compute the PCA basis / circle-fit metrics from only the non-polysemous states, so an outlier like May doesn't corrupt the quantitative circularity score). Task 8 changed `Structure.states` to always include ALL labels (with `Structure.excluded` as separate metadata, not pre-filtered) specifically so this filtering happens here, not in the loader. Added an `excluded: tuple[str, ...] = ()` parameter, filtering by label before mean-centering/PCA/circle-fit. Projecting excluded states *back* onto the fitted plane for visualization is explicitly OUT of this task's scope (no test requires it) — that belongs to Task 13's plotting code, which can re-derive a small projection from the same basis if/when needed. Default `excluded=()` leaves prior behavior (and the original test) unchanged.
+
 **Interfaces:**
 - Consumes: `types.DataMatrix`, `types.group_runs`, `geometry.linalg`, `geometry.circle_fit`.
 - Produces:
   - `LayerCircularity(layer, normalized_residual, angular_order, top2_variance_ratio)` — frozen.
-  - `circularity_by_layer(dms_by_layer: dict[int, list[DataMatrix]], centering="mean") -> list[LayerCircularity]` — averages runs per layer, mean-centers, PCA, top-2 plane, circle-fit + angular-order + top-2 variance ratio.
+  - `circularity_by_layer(dms_by_layer: dict[int, list[DataMatrix]], excluded: tuple[str, ...] = (), centering="mean") -> list[LayerCircularity]` — averages runs per layer; **filters out any state whose label is in `excluded` before** mean-centering, PCA, top-2 plane, circle-fit, angular-order, and top-2 variance ratio.
 
 - [ ] **Step 1: Write the failing test**
 ```python
@@ -897,6 +899,27 @@ def test_clean_ring_scores_high():
     assert lc.normalized_residual < 0.1
     assert lc.angular_order > 0.9
     assert lc.top2_variance_ratio > 0.9
+
+def test_excluding_an_outlier_state_restores_high_circularity():
+    # 12-state clean ring, but state "s5" is replaced with an unrelated outlier
+    # vector (simulating May's polysemy). Left in, it should corrupt the score;
+    # excluded from the basis, circularity should be high again.
+    rng = np.random.default_rng(11)
+    states = tuple(State(f"s{i}", i + 1) for i in range(12))
+    base = ring_matrix(d=40, n_states=12)
+    outlier_col = 10.0 * rng.standard_normal((40, 1))
+    dms = []
+    for r in range(4):
+        matrix = (base + 0.01 * rng.standard_normal(base.shape)).copy()
+        matrix[:, [5]] = outlier_col + 0.01 * rng.standard_normal((40, 1))
+        dms.append(DataMatrix("month", 3, r, matrix, states))
+
+    contaminated = circularity_by_layer({3: dms})[0]
+    assert contaminated.angular_order < 0.9
+
+    cleaned = circularity_by_layer({3: dms}, excluded=("s5",))[0]
+    assert cleaned.angular_order > 0.9
+    assert cleaned.top2_variance_ratio > 0.9
 ```
 
 - [ ] **Step 2: Run to verify fail** — FAIL.
@@ -916,16 +939,20 @@ class LayerCircularity:
     angular_order: float
     top2_variance_ratio: float
 
-def circularity_by_layer(dms_by_layer: dict, centering: str = "mean") -> list:
+def circularity_by_layer(dms_by_layer: dict, excluded: tuple = (), centering: str = "mean") -> list:
     results = []
     for layer in sorted(dms_by_layer):
         dms = dms_by_layer[layer]
-        mean_matrix = np.mean(group_runs(dms), axis=0)          # (d, n_states)
-        canonical = np.array([s.canonical_index for s in sorted(dms[0].states,
-                                                                key=lambda s: s.canonical_index)])
-        centered = mean_center(mean_matrix, centering)
-        u = source_pcs(mean_matrix, centering)
-        scores = (u[:, :2].T @ centered).T                      # (n_states, 2)
+        all_states = sorted(dms[0].states, key=lambda s: s.canonical_index)
+        keep_mask = np.array([s.label not in excluded for s in all_states])
+
+        mean_matrix = np.mean(group_runs(dms), axis=0)          # (d, n_states), same order as all_states
+        basis_matrix = mean_matrix[:, keep_mask]
+        canonical = np.array([s.canonical_index for s, keep in zip(all_states, keep_mask) if keep])
+
+        centered = mean_center(basis_matrix, centering)
+        u = source_pcs(basis_matrix, centering)
+        scores = (u[:, :2].T @ centered).T                      # (n_kept_states, 2)
         energy = np.sum((u.T @ centered) ** 2, axis=1)
         ratio = float(energy[:2].sum() / energy.sum())
         fit = fit_circle(scores)
