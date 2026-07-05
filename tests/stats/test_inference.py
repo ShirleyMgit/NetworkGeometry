@@ -18,3 +18,8 @@ def test_bonferroni_and_bh_bounds():
 
 def test_gate_selects_significant_layers():
     assert gate({0: 0.5, 5: 0.001, 9: 0.2}, alpha=0.05) == {5}
+
+def test_benjamini_hochberg_hand_derived_case():
+    p = np.array([0.01, 0.04, 0.03, 0.005])
+    expected = np.array([0.02, 0.04, 0.04, 0.02])
+    assert np.allclose(benjamini_hochberg(p), expected)
