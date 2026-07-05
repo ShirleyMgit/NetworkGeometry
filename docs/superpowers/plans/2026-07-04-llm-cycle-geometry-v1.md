@@ -1422,6 +1422,8 @@ Single frozen model (Gemma 2 2B). Inference generalizes across prompt contexts,
 not across a population of models. See spec §5.5.
 ```
 
+> **AMENDED (pre-dispatch, discovered while reviewing this brief):** the original `run_part1` below called `circularity_by_layer(by_layer)` with no `excluded` argument. Since Task 9 added an `excluded` parameter specifically so month's polysemous states (May, March, August — per `structures.yaml`'s `excluded` list, loaded onto `Structure.excluded`) are dropped from the PCA basis, omitting it here would silently defeat that entire feature for the real study run: May would corrupt the actual month circularity score exactly as demonstrated by Task 9's own regression test. Fixed by passing `excluded=structure.excluded` (a no-op for "day", which has none).
+
 - [ ] **Step 4: Implement `run.py` orchestration (no unit test; smoke via `--help`)**
 ```python
 import argparse
@@ -1433,12 +1435,35 @@ def run_part1(model, layers, out_dir):
     from networkgeometry.geometry.part1 import circularity_by_layer
     results = {}
     for name in ("day", "month"):
-        dms = extract(model, prompts_for(structures[name], templates["shared"]),
-                      structures[name].states, name, layers)
+        structure = structures[name]
+        dms = extract(model, prompts_for(structure, templates["shared"]),
+                      structure.states, name, layers)
         by_layer = {}
         for dm in dms:
             by_layer.setdefault(dm.layer, []).append(dm)
-        results[name] = circularity_by_layer(by_layer)
+        results[name] = circularity_by_layer(by_layer, excluded=structure.excluded)
+    return results
+
+def run_part2(model, layers, out_dir):
+    structures, templates = load_structures(), load_templates()
+    from networkgeometry.extraction.activations import extract
+    from networkgeometry.analysis.ladder import run_ladder, to_json
+    import json
+    from pathlib import Path
+
+    runs_by_structure_layer = {}
+    for name in ("day", "month", "years", "hierarchy", "flat"):
+        structure = structures[name]
+        dms = extract(model, prompts_for(structure, templates["shared"]),
+                      structure.states, name, layers)
+        for dm in dms:
+            runs_by_structure_layer.setdefault((name, dm.layer), []).append(dm.matrix)
+
+    results = run_ladder(runs_by_structure_layer, layers, source="day",
+                         targets=("month", "years", "hierarchy", "flat"))
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    (out_path / "summary.json").write_text(json.dumps(to_json(results), indent=2), encoding="utf-8")
     return results
 
 def main():
@@ -1451,10 +1476,14 @@ def main():
     model = load_model()
     if args.part == "part1":
         run_part1(model, args.layers, args.out)
+    elif args.part == "part2":
+        run_part2(model, args.layers, args.out)
 
 if __name__ == "__main__":
     main()
 ```
+
+> **AMENDED (pre-dispatch):** the interface list above promises `run_part2(...)`, and Task 15's own instructions (`--part part2 --layers <passing layers>`) rely on it, but the original Step 4 code never defined it and `main()` had no `part2` branch — running `--part part2` would have silently done nothing. Added `run_part2`, assembling only already-built, already-approved pieces (`extract`, `run_ladder`, `to_json` from Tasks 10/11): extracts all five structures' activations at the given layers, feeds them to `run_ladder` with `source="day"`, and writes the JSON result to `<out_dir>/summary.json` — matching what §8's findings-memo deliverable and Task 15 expect to exist. Also added the missing `elif args.part == "part2"` branch to `main()`.
 
 - [ ] **Step 5: Run tests + smoke, then commit**
 
