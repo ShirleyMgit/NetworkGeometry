@@ -20,15 +20,40 @@ def fit_circle(points: np.ndarray) -> CircleFit:
     angles = np.arctan2(y - cy, x - cx)
     return CircleFit(float(cx), float(cy), r, normalized_residual, angles)
 
-def _circular_mean(a: np.ndarray) -> float:
-    return float(np.arctan2(np.mean(np.sin(a)), np.mean(np.cos(a))))
-
 def circular_correlation(a: np.ndarray, b: np.ndarray) -> float:
-    a0 = np.sin(a)
-    b0 = np.sin(b)
-    denom = np.sqrt(np.sum(a0**2) * np.sum(b0**2))
-    return float(np.sum(a0 * b0) / denom) if denom else 0.0
+    """Rotation-invariant alignment between two angle series, in [0, 1].
+
+    Uses the mean resultant length of pairwise angle differences (a
+    phase-locking-value style statistic). This is exactly invariant to a
+    global rotation applied to either series: shifting every element of
+    `a` by a constant c multiplies every pairwise-difference unit vector
+    by exp(ic), which does not change the magnitude of the mean.
+
+    The naive circular-mean-centered formula (subtract each series' own
+    circular mean before correlating) is NOT safe for a full, evenly-spaced
+    ring: the resultant vector (mean cos, mean sin) is exactly zero by
+    symmetry for any rotation, so the "circular mean" is a degenerate
+    atan2(~0, ~0) that does not track the rotation and does not achieve
+    invariance. That degeneracy is exactly this project's primary case
+    (7-day, 12-month full cycles), which is why this formula is used
+    instead.
+    """
+    diff = a - b
+    return float(np.abs(np.mean(np.exp(1j * diff))))
+
 
 def angular_order_score(points, canonical_index, n_states) -> float:
+    """Rotation- and reflection-invariant score for whether fitted circle
+    angles follow the states' canonical (e.g. calendar) order, in [0, 1].
+
+    Reflection invariance (accepting a mirror-reversed traversal direction
+    as equivalent) is intentional: PCA/SVD singular vectors have an
+    arbitrary sign convention, so a fitted circle can come out mirrored
+    for reasons unrelated to whether the underlying cyclic structure is
+    correctly represented.
+    """
     target = 2 * np.pi * np.asarray(canonical_index) / n_states
-    return abs(circular_correlation(fit_circle(points).angles, target))
+    angles = fit_circle(points).angles
+    forward = circular_correlation(angles, target)
+    mirrored = circular_correlation(-angles, target)
+    return max(forward, mirrored)
