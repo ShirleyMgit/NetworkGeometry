@@ -1442,7 +1442,7 @@ Run: `uv add transformer-lens torch sae_lens` (and authenticate to Hugging Face 
 
 - [ ] **Step 2: Part 1 strict-leg reproduction (the gate)**
 
-Run: `uv run python -m networkgeometry.run --part part1 --layers 0 1 2 ... 25`
+Run: `uv run python -m networkgeometry.run --part part1 --layers $(seq 0 25)` (all 26 layers; `--layers` defaults to `range(26)` if omitted, per `run.py`'s `argparse` default in Task 14 — omitting the flag is equivalent and simpler)
 Expected: month + years circularity high at some layers (angular_order > ~0.9). **If not, treat as a bug** (check token position, layer indexing, centering, tokenization, May exclusion) per spec §4.5 — do not proceed to Part 2.
 
 - [ ] **Step 3: Part 2 ladder at gate-passing layers**
