@@ -30,3 +30,4 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = ["integration: requires downloading a model"]
+addopts = "-m 'not integration'"
