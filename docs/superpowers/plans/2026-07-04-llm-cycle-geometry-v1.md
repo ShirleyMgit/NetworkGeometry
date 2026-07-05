@@ -980,9 +980,11 @@ git commit -m "feat: Part 1 circularity-by-layer pipeline"
 **Interfaces:**
 - Consumes: `stats.within`, `stats.cross`, `stats.inference`, `types.group_runs`.
 - Produces:
-  - `Contrast(name, source, target, context)` and `LadderResult(layer, within, crosses: dict[str, dict], gate_passed: bool)`.
+  - `LadderResult(layer, within, crosses: dict[str, dict], gate_passed: bool)`.
   - `run_ladder(runs_by_structure_layer: dict[tuple[str,int], list[np.ndarray]], layers: list[int], source="day", targets=("month","years","hierarchy","flat"), n_perm=500, alpha=0.05, seed=0) -> list[LadderResult]` — Stage 1 within-gate per layer, then Stage 2 cross-structure AUC + null p-values only at gate-passing layers; applies FDR + Bonferroni across the surviving (layer×target) set.
   - `to_json(results: list[LadderResult]) -> dict`.
+
+> **AMENDED (post-implementation cleanup):** an earlier draft of this interface list also named a `Contrast(name, source, target, context)` dataclass. It was never used by Step 3's actual code, never referenced by any test, and no later task (11-15) consumes it — confirmed via a repo-wide search finding this single mention. Removed as a stale artifact; `LadderResult.crosses: dict[str, dict]` (keyed by target name) already carries everything the comparison ladder (spec §5.3) needs per layer.
 
 - [ ] **Step 1: Write the failing test**
 ```python
