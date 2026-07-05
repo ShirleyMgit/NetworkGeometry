@@ -232,9 +232,11 @@ git commit -m "feat: project scaffolding, DataMatrix contract, synthetic fixture
 - Consumes: `tests.fixtures`.
 - Produces:
   - `mean_center(A: np.ndarray, centering: str = "mean") -> np.ndarray` — subtract mean over columns (states) when `centering=="mean"`, else identity. `centering ∈ {"mean","none"}`.
-  - `source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray` — left singular vectors `U` `(d, r)`, ordered by variance, `r = min(d, n_states)`.
+  - `source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray` — left singular vectors `U` `(d, d)` (full ambient basis via `full_matrices=True`, NOT capped at `min(d, n_states)` — see the AMENDED note below this interface list), ordered by variance (real signal directions first, then an arbitrary-but-orthonormal completion of the remaining ambient dimensions).
   - `state_gram(A: np.ndarray, centering: str = "mean") -> np.ndarray` — `(n_states, n_states)` Gram over columns.
   - `is_toeplitz(G: np.ndarray, atol: float = 1e-8) -> bool`.
+
+> **AMENDED (post-Task-4 fix, applies from Task 4 onward):** `source_pcs` originally used `full_matrices=False` (economy SVD, `U` capped at `min(d, n_states)`), as shown in Step 3 below. Task 4's own test (`test_shared_subspace_high_orthogonal_chance`) revealed this breaks the classical "chance-level AUC ≈ 0.5" guarantee whenever `n_states ≪ d` — exactly this project's real regime (Gemma 2 2B: `d=2304`, cyclic structures have only 7-30 states). With economy SVD, the PC columns beyond the source's true signal rank are an arbitrary, only-partially-uninformative completion, so an unrelated/orthogonal source's cross-AUC came out far below 0.5 (verified ~0.07 at `d=48, n_states=7`) instead of near it. **Fix: use `full_matrices=True`** so `U` is always the full `(d,d)` ambient basis — this guarantees any target's cumulative variance reaches 100% by the last component, restoring genuine chance-level behavior (verified ~0.45-0.52 across seeds) for uninformative sources while leaving real shared structure unaffected (still ~0.98). **This is an explicit v1 choice, not final** — it increases `source_pcs`'s cost to `O(d²)` per call (~42MB dense array at Gemma 2B's `d=2304`); revisit later (e.g. truncating to a smaller common `k` across compared structures) once the pipeline runs end-to-end. Every later task that calls `source_pcs` (Tasks 5, 6, 9, 10) inherits this automatically — no other code changes. **`Vt` (right singular vectors) is unaffected by this flag when `d > n_states`** (verified numerically: identical shape and values either way) — so Task 5's separate direct `np.linalg.svd(..., full_matrices=False)` call for `v_side_stability` (which only uses `vt`) is correct as written and needs no change.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -281,8 +283,13 @@ def mean_center(A: np.ndarray, centering: str = "mean") -> np.ndarray:
     return A - A.mean(axis=1, keepdims=True)
 
 def source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray:
+    # NOTE: as originally written below (full_matrices=False) this was the
+    # Task 2 implementation. It was corrected to full_matrices=True during
+    # Task 4 — see the AMENDED note above the interface list for why. The
+    # actual, current implementation lives in the codebase; this code block
+    # is kept as historical context for how the task was originally planned.
     centered = mean_center(A, centering)
-    U, _s, _vt = np.linalg.svd(centered, full_matrices=False)
+    U, _s, _vt = np.linalg.svd(centered, full_matrices=False)  # AMENDED to True; see note above
     return U
 
 def state_gram(A: np.ndarray, centering: str = "mean") -> np.ndarray:
