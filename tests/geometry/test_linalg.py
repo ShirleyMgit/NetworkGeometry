@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from networkgeometry.geometry.linalg import mean_center, source_pcs, state_gram, is_toeplitz
 from tests.fixtures import ring_matrix
 
@@ -22,3 +23,8 @@ def test_uncentered_gram_of_translation_symmetric_is_toeplitz():
     kernel = np.exp(-np.arange(n))
     G = np.array([[kernel[abs(i - j)] for j in range(n)] for i in range(n)])
     assert is_toeplitz(G)
+
+def test_mean_center_raises_for_invalid_centering():
+    A = np.arange(12.0).reshape(3, 4)
+    with pytest.raises(ValueError, match="unknown centering"):
+        mean_center(A, centering="bogus")
