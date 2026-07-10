@@ -1,0 +1,21 @@
+shared:
+  - "{X} is my favorite."
+  - "Honestly, I love {X}."
+  - "Let's talk about {X}."
+  - "Nothing beats {X}."
+specific:
+  day:
+    - "We'll meet on {X}."
+    - "The concert is on {X}."
+  month:
+    - "We'll meet in {X}."
+    - "The concert is in {X}."
+  years:
+    - "It happened in {X}."
+    - "Back in {X}, things changed."
+  hierarchy:
+    - "I saw a {X} today."
+    - "Look, a {X}."
+  flat:
+    - "I saw a {X} today."
+    - "Look, a {X}."

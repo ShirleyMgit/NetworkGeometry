@@ -232,9 +232,11 @@ git commit -m "feat: project scaffolding, DataMatrix contract, synthetic fixture
 - Consumes: `tests.fixtures`.
 - Produces:
   - `mean_center(A: np.ndarray, centering: str = "mean") -> np.ndarray` — subtract mean over columns (states) when `centering=="mean"`, else identity. `centering ∈ {"mean","none"}`.
-  - `source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray` — left singular vectors `U` `(d, r)`, ordered by variance, `r = min(d, n_states)`.
+  - `source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray` — left singular vectors `U` `(d, d)` (full ambient basis via `full_matrices=True`, NOT capped at `min(d, n_states)` — see the AMENDED note below this interface list), ordered by variance (real signal directions first, then an arbitrary-but-orthonormal completion of the remaining ambient dimensions).
   - `state_gram(A: np.ndarray, centering: str = "mean") -> np.ndarray` — `(n_states, n_states)` Gram over columns.
   - `is_toeplitz(G: np.ndarray, atol: float = 1e-8) -> bool`.
+
+> **AMENDED (post-Task-4 fix, applies from Task 4 onward):** `source_pcs` originally used `full_matrices=False` (economy SVD, `U` capped at `min(d, n_states)`), as shown in Step 3 below. Task 4's own test (`test_shared_subspace_high_orthogonal_chance`) revealed this breaks the classical "chance-level AUC ≈ 0.5" guarantee whenever `n_states ≪ d` — exactly this project's real regime (Gemma 2 2B: `d=2304`, cyclic structures have only 7-30 states). With economy SVD, the PC columns beyond the source's true signal rank are an arbitrary, only-partially-uninformative completion, so an unrelated/orthogonal source's cross-AUC came out far below 0.5 (verified ~0.07 at `d=48, n_states=7`) instead of near it. **Fix: use `full_matrices=True`** so `U` is always the full `(d,d)` ambient basis — this guarantees any target's cumulative variance reaches 100% by the last component, restoring genuine chance-level behavior (verified ~0.45-0.52 across seeds) for uninformative sources while leaving real shared structure unaffected (still ~0.98). **This is an explicit v1 choice, not final** — it increases `source_pcs`'s cost to `O(d²)` per call (~42MB dense array at Gemma 2B's `d=2304`); revisit later (e.g. truncating to a smaller common `k` across compared structures) once the pipeline runs end-to-end. Every later task that calls `source_pcs` (Tasks 5, 6, 9, 10) inherits this automatically — no other code changes. **`Vt` (right singular vectors) is unaffected by this flag when `d > n_states`** (verified numerically: identical shape and values either way) — so Task 5's separate direct `np.linalg.svd(..., full_matrices=False)` call for `v_side_stability` (which only uses `vt`) is correct as written and needs no change.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -281,8 +283,13 @@ def mean_center(A: np.ndarray, centering: str = "mean") -> np.ndarray:
     return A - A.mean(axis=1, keepdims=True)
 
 def source_pcs(A: np.ndarray, centering: str = "mean") -> np.ndarray:
+    # NOTE: as originally written below (full_matrices=False) this was the
+    # Task 2 implementation. It was corrected to full_matrices=True during
+    # Task 4 — see the AMENDED note above the interface list for why. The
+    # actual, current implementation lives in the codebase; this code block
+    # is kept as historical context for how the task was originally planned.
     centered = mean_center(A, centering)
-    U, _s, _vt = np.linalg.svd(centered, full_matrices=False)
+    U, _s, _vt = np.linalg.svd(centered, full_matrices=False)  # AMENDED to True; see note above
     return U
 
 def state_gram(A: np.ndarray, centering: str = "mean") -> np.ndarray:
@@ -863,11 +870,13 @@ git commit -m "feat: stimuli structures + template pools + prompt builder"
 - Create: `networkgeometry/geometry/part1.py`
 - Test: `tests/geometry/test_part1.py`
 
+> **AMENDED (pre-dispatch, discovered during Task 8 review):** the original interface below took no `excluded` parameter, so it could not implement the "May handling" this task is named for (spec §4.3(b): compute the PCA basis / circle-fit metrics from only the non-polysemous states, so an outlier like May doesn't corrupt the quantitative circularity score). Task 8 changed `Structure.states` to always include ALL labels (with `Structure.excluded` as separate metadata, not pre-filtered) specifically so this filtering happens here, not in the loader. Added an `excluded: tuple[str, ...] = ()` parameter, filtering by label before mean-centering/PCA/circle-fit. Projecting excluded states *back* onto the fitted plane for visualization is explicitly OUT of this task's scope (no test requires it) — that belongs to Task 13's plotting code, which can re-derive a small projection from the same basis if/when needed. Default `excluded=()` leaves prior behavior (and the original test) unchanged.
+
 **Interfaces:**
 - Consumes: `types.DataMatrix`, `types.group_runs`, `geometry.linalg`, `geometry.circle_fit`.
 - Produces:
   - `LayerCircularity(layer, normalized_residual, angular_order, top2_variance_ratio)` — frozen.
-  - `circularity_by_layer(dms_by_layer: dict[int, list[DataMatrix]], centering="mean") -> list[LayerCircularity]` — averages runs per layer, mean-centers, PCA, top-2 plane, circle-fit + angular-order + top-2 variance ratio.
+  - `circularity_by_layer(dms_by_layer: dict[int, list[DataMatrix]], excluded: tuple[str, ...] = (), centering="mean") -> list[LayerCircularity]` — averages runs per layer; **filters out any state whose label is in `excluded` before** mean-centering, PCA, top-2 plane, circle-fit, angular-order, and top-2 variance ratio.
 
 - [ ] **Step 1: Write the failing test**
 ```python
@@ -890,6 +899,27 @@ def test_clean_ring_scores_high():
     assert lc.normalized_residual < 0.1
     assert lc.angular_order > 0.9
     assert lc.top2_variance_ratio > 0.9
+
+def test_excluding_an_outlier_state_restores_high_circularity():
+    # 12-state clean ring, but state "s5" is replaced with an unrelated outlier
+    # vector (simulating May's polysemy). Left in, it should corrupt the score;
+    # excluded from the basis, circularity should be high again.
+    rng = np.random.default_rng(11)
+    states = tuple(State(f"s{i}", i + 1) for i in range(12))
+    base = ring_matrix(d=40, n_states=12)
+    outlier_col = 10.0 * rng.standard_normal((40, 1))
+    dms = []
+    for r in range(4):
+        matrix = (base + 0.01 * rng.standard_normal(base.shape)).copy()
+        matrix[:, [5]] = outlier_col + 0.01 * rng.standard_normal((40, 1))
+        dms.append(DataMatrix("month", 3, r, matrix, states))
+
+    contaminated = circularity_by_layer({3: dms})[0]
+    assert contaminated.angular_order < 0.9
+
+    cleaned = circularity_by_layer({3: dms}, excluded=("s5",))[0]
+    assert cleaned.angular_order > 0.9
+    assert cleaned.top2_variance_ratio > 0.9
 ```
 
 - [ ] **Step 2: Run to verify fail** — FAIL.
@@ -909,16 +939,20 @@ class LayerCircularity:
     angular_order: float
     top2_variance_ratio: float
 
-def circularity_by_layer(dms_by_layer: dict, centering: str = "mean") -> list:
+def circularity_by_layer(dms_by_layer: dict, excluded: tuple = (), centering: str = "mean") -> list:
     results = []
     for layer in sorted(dms_by_layer):
         dms = dms_by_layer[layer]
-        mean_matrix = np.mean(group_runs(dms), axis=0)          # (d, n_states)
-        canonical = np.array([s.canonical_index for s in sorted(dms[0].states,
-                                                                key=lambda s: s.canonical_index)])
-        centered = mean_center(mean_matrix, centering)
-        u = source_pcs(mean_matrix, centering)
-        scores = (u[:, :2].T @ centered).T                      # (n_states, 2)
+        all_states = sorted(dms[0].states, key=lambda s: s.canonical_index)
+        keep_mask = np.array([s.label not in excluded for s in all_states])
+
+        mean_matrix = np.mean(group_runs(dms), axis=0)          # (d, n_states), same order as all_states
+        basis_matrix = mean_matrix[:, keep_mask]
+        canonical = np.array([s.canonical_index for s, keep in zip(all_states, keep_mask) if keep])
+
+        centered = mean_center(basis_matrix, centering)
+        u = source_pcs(basis_matrix, centering)
+        scores = (u[:, :2].T @ centered).T                      # (n_kept_states, 2)
         energy = np.sum((u.T @ centered) ** 2, axis=1)
         ratio = float(energy[:2].sum() / energy.sum())
         fit = fit_circle(scores)
@@ -946,9 +980,11 @@ git commit -m "feat: Part 1 circularity-by-layer pipeline"
 **Interfaces:**
 - Consumes: `stats.within`, `stats.cross`, `stats.inference`, `types.group_runs`.
 - Produces:
-  - `Contrast(name, source, target, context)` and `LadderResult(layer, within, crosses: dict[str, dict], gate_passed: bool)`.
+  - `LadderResult(layer, within, crosses: dict[str, dict], gate_passed: bool)`.
   - `run_ladder(runs_by_structure_layer: dict[tuple[str,int], list[np.ndarray]], layers: list[int], source="day", targets=("month","years","hierarchy","flat"), n_perm=500, alpha=0.05, seed=0) -> list[LadderResult]` — Stage 1 within-gate per layer, then Stage 2 cross-structure AUC + null p-values only at gate-passing layers; applies FDR + Bonferroni across the surviving (layer×target) set.
   - `to_json(results: list[LadderResult]) -> dict`.
+
+> **AMENDED (post-implementation cleanup):** an earlier draft of this interface list also named a `Contrast(name, source, target, context)` dataclass. It was never used by Step 3's actual code, never referenced by any test, and no later task (11-15) consumes it — confirmed via a repo-wide search finding this single mention. Removed as a stale artifact; `LadderResult.crosses: dict[str, dict]` (keyed by target name) already carries everything the comparison ladder (spec §5.3) needs per layer.
 
 - [ ] **Step 1: Write the failing test**
 ```python
@@ -1114,7 +1150,11 @@ def extract(model, prompts_by_run, states, structure, layers) -> list:
 Add to `pyproject.toml` under `[tool.pytest.ini_options]`:
 ```toml
 markers = ["integration: requires downloading a model"]
+addopts = "-m 'not integration'"
 ```
+
+> **AMENDED (post-implementation):** the original brief registered the marker but omitted `addopts`, so a plain `uv run pytest` (used by every later task's "run the full suite" step) would silently include the gpt2-downloading integration test every time — adding 20-50s and a network dependency to every routine test run. `addopts = "-m 'not integration'"` makes integration tests opt-in only (`pytest -m integration`), restoring a fast, network-free default run. Verified: `uv run pytest -q` → `33 passed, 1 deselected`; `uv run pytest -q -m integration` → `1 passed, 33 deselected`.
+
 ```bash
 git add networkgeometry/extraction/ tests/extraction/ pyproject.toml
 git commit -m "feat: TransformerLens extraction to DataMatrix (final-token resid)"
@@ -1382,6 +1422,8 @@ Single frozen model (Gemma 2 2B). Inference generalizes across prompt contexts,
 not across a population of models. See spec §5.5.
 ```
 
+> **AMENDED (pre-dispatch, discovered while reviewing this brief):** the original `run_part1` below called `circularity_by_layer(by_layer)` with no `excluded` argument. Since Task 9 added an `excluded` parameter specifically so month's polysemous states (May, March, August — per `structures.yaml`'s `excluded` list, loaded onto `Structure.excluded`) are dropped from the PCA basis, omitting it here would silently defeat that entire feature for the real study run: May would corrupt the actual month circularity score exactly as demonstrated by Task 9's own regression test. Fixed by passing `excluded=structure.excluded` (a no-op for "day", which has none).
+
 - [ ] **Step 4: Implement `run.py` orchestration (no unit test; smoke via `--help`)**
 ```python
 import argparse
@@ -1393,12 +1435,35 @@ def run_part1(model, layers, out_dir):
     from networkgeometry.geometry.part1 import circularity_by_layer
     results = {}
     for name in ("day", "month"):
-        dms = extract(model, prompts_for(structures[name], templates["shared"]),
-                      structures[name].states, name, layers)
+        structure = structures[name]
+        dms = extract(model, prompts_for(structure, templates["shared"]),
+                      structure.states, name, layers)
         by_layer = {}
         for dm in dms:
             by_layer.setdefault(dm.layer, []).append(dm)
-        results[name] = circularity_by_layer(by_layer)
+        results[name] = circularity_by_layer(by_layer, excluded=structure.excluded)
+    return results
+
+def run_part2(model, layers, out_dir):
+    structures, templates = load_structures(), load_templates()
+    from networkgeometry.extraction.activations import extract
+    from networkgeometry.analysis.ladder import run_ladder, to_json
+    import json
+    from pathlib import Path
+
+    runs_by_structure_layer = {}
+    for name in ("day", "month", "years", "hierarchy", "flat"):
+        structure = structures[name]
+        dms = extract(model, prompts_for(structure, templates["shared"]),
+                      structure.states, name, layers)
+        for dm in dms:
+            runs_by_structure_layer.setdefault((name, dm.layer), []).append(dm.matrix)
+
+    results = run_ladder(runs_by_structure_layer, layers, source="day",
+                         targets=("month", "years", "hierarchy", "flat"))
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    (out_path / "summary.json").write_text(json.dumps(to_json(results), indent=2), encoding="utf-8")
     return results
 
 def main():
@@ -1411,10 +1476,14 @@ def main():
     model = load_model()
     if args.part == "part1":
         run_part1(model, args.layers, args.out)
+    elif args.part == "part2":
+        run_part2(model, args.layers, args.out)
 
 if __name__ == "__main__":
     main()
 ```
+
+> **AMENDED (pre-dispatch):** the interface list above promises `run_part2(...)`, and Task 15's own instructions (`--part part2 --layers <passing layers>`) rely on it, but the original Step 4 code never defined it and `main()` had no `part2` branch — running `--part part2` would have silently done nothing. Added `run_part2`, assembling only already-built, already-approved pieces (`extract`, `run_ladder`, `to_json` from Tasks 10/11): extracts all five structures' activations at the given layers, feeds them to `run_ladder` with `source="day"`, and writes the JSON result to `<out_dir>/summary.json` — matching what §8's findings-memo deliverable and Task 15 expect to exist. Also added the missing `elif args.part == "part2"` branch to `main()`.
 
 - [ ] **Step 5: Run tests + smoke, then commit**
 
@@ -1442,7 +1511,7 @@ Run: `uv add transformer-lens torch sae_lens` (and authenticate to Hugging Face 
 
 - [ ] **Step 2: Part 1 strict-leg reproduction (the gate)**
 
-Run: `uv run python -m networkgeometry.run --part part1 --layers 0 1 2 ... 25`
+Run: `uv run python -m networkgeometry.run --part part1 --layers $(seq 0 25)` (all 26 layers; `--layers` defaults to `range(26)` if omitted, per `run.py`'s `argparse` default in Task 14 — omitting the flag is equivalent and simpler)
 Expected: month + years circularity high at some layers (angular_order > ~0.9). **If not, treat as a bug** (check token position, layer indexing, centering, tokenization, May exclusion) per spec §4.5 — do not proceed to Part 2.
 
 - [ ] **Step 3: Part 2 ladder at gate-passing layers**
