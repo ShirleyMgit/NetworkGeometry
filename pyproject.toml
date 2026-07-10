@@ -1,6 +1,6 @@
 [project]
 name = "networkgeometry"
-version = "0.1.0"
+version = "0.1.2"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -9,10 +9,10 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3.11.0",
-    "numpy>=2.4.6",
+    "numpy>=1.26",
     "pyyaml>=6.0.3",
-    "scipy>=1.17.1",
-    "torch>=2.12.1",
+    "scipy>=1.11",
+    "torch>=2.4",
     "transformer-lens>=3.5.1",
 ]
 

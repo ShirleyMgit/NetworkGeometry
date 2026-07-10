@@ -83,12 +83,18 @@ v1 uses the canonical sets above. A documented extension **densifies** cycles wi
 
 ### 3.4 Two template pools
 
-1. **Shared/neutral pool** — natural frames whose slot works **identically** for any single-token state (used for matched-context comparisons):
-   - `"{X} is my favorite."` → "Monday is my favorite." / "January is my favorite."
-   - `"Honestly, I love {X}."`, `"Let's talk about {X}."`, `"Nothing beats {X}."` (≈8 templates)
-2. **Structure-specific pool** — natural per-structure frames that necessarily differ in wording (used for different-context comparisons):
-   - day: `"We'll meet on {day}."`, `"The concert is on {day}."`
-   - month: `"We'll meet in {month}."`, `"The concert is in {month}."` (≈8 per structure)
+**Hard constraint — the state word must be the prompt's final token.** Extraction reads the activation at position `T−1` (§4.1), so that position must actually correspond to the state word, not to trailing punctuation or a word that follows it. Concretely: **no template may end with a period or any character after `{X}`**, and `{X}` must be the grammatically final word. This is not optional stylistic phrasing — it is what makes "final-token activation" mean "the state's activation" at all. Every template is verified by tokenizing a filled-in example and checking that `tokens[-1]` corresponds to the state word (or, for multi-token states like years, that it's the state's own last token — see the years exception below). A prior version of this pool ended every template in a period (e.g. `"Honestly, I love {X}."`), which — confirmed empirically against Gemma's tokenizer — makes the final token `'.'` for essentially every prompt, silently reading the wrong activation for all of Part 1 and Part 2. Any new template must be checked the same way before use.
+
+1. **Shared/neutral pool** — natural frames whose slot works **identically** for any single-token state (used for matched-context comparisons), state word last, no trailing punctuation:
+   - `"Honestly, I love {X}"`
+   - `"Let's talk about {X}"`
+   - `"Nothing beats {X}"`
+   - `"My favorite thing is {X}"` (≈8 templates)
+2. **Structure-specific pool** — natural per-structure frames that necessarily differ in wording (used for different-context comparisons), same state-word-last constraint:
+   - day: `"We'll meet on {day}"`, `"The concert is on {day}"`
+   - month: `"We'll meet in {month}"`, `"The concert is in {month}"`
+   - years: `"It happened in {years}"`, `"Everything changed back in {years}"`
+   - hierarchy / flat: `"Yesterday I saw a {X}"`, `"Look, a {X}"` (≈8 per structure)
 
 Runs are **paired by index across structures** (run `r` = the r-th template of each structure) so within- and cross-structure analyses share a fold structure and are directly comparable. Target ≈16 templates/runs per structure total.
 
@@ -113,8 +119,10 @@ To make Part 1 a *strict* reproduction (the validation gate of §4.5), these cho
 
 **(a) Strict-reproduction leg vs. generalized leg.**
 Part 1 is run twice:
-1. **Strict leg** — the paper's *exact* single prompt template, to reproduce their figures: months `"The month of the year is {X}"`, years `"In the year {X}"`. Token read position = **final token** (`T−1`). Layers = **all 26**. This leg has one run per structure (no template averaging). For years, the strict leg uses the **paper's full range 1700–2020** (multi-token year strings are fine — we read the final token regardless of how many tokens the year splits into). *Note the difference from Part 2:* the §3.1 years **control** is a smaller (~30), size/frequency-matched, single-token-preferred subset for the cross-structure comparison; the strict leg here is purely for reproducing the years manifold and is not used as a Part-2 control.
+1. **Strict leg** — the paper's *exact* single prompt template, to reproduce their figures: months `"The month of the year is {X}"`, years `"In the year {X}"`. **Day-of-week has no paper equivalent (Engels reproduced it on other models, not via this paper's template), so we use the same construction pattern:** `"The day of the week is {X}"`. Token read position = **final token** (`T−1`). Layers = **all 26**. This leg has one run per structure (no template averaging). For years, the strict leg uses the **paper's full range 1700–2020** (multi-token year strings are fine — we read the final token regardless of how many tokens the year splits into). *Note the difference from Part 2:* the §3.1 years **control** is a smaller (~30), size/frequency-matched, single-token-preferred subset for the cross-structure comparison; the strict leg here is purely for reproducing the years manifold and is not used as a Part-2 control. **US states are in the paper but out of scope here** — v1's stimulus set (§3.1) has no states structure and none is planned.
 2. **Generalized leg** — our multi-template pool (§3.4), averaging over templates. If the circle survives the generalized leg, it isn't an artifact of one prompt. The strict leg is the gate; the generalized leg feeds Part 2.
+
+**Implementation status:** the strict leg is a code gap as of 2026-07-11 — `run_part1`/`run_part2` currently only run the generalized-leg templates (§3.4). The strict leg needs an actual extraction pass with the single templates above before Part 1's reproduction claim can rely on it.
 
 **(b) Polysemy handling — "May", and the general rule.**
 "May" is polysemous (month / modal verb / given name), so its final-token activation blends senses and distorts the month geometry. The paper's fix, made precise:

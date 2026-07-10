@@ -8,7 +8,7 @@ def load_model(name: str = "google/gemma-2-2b", device: str = "cpu"):
 def _final_token_resid(model, prompt: str, layers: list) -> dict:
     names = [f"blocks.{l}.hook_resid_post" for l in layers]
     _logits, cache = model.run_with_cache(prompt, names_filter=lambda n: n in names)
-    return {l: cache[f"blocks.{l}.hook_resid_post"][0, -1, :].detach().cpu().numpy()
+    return {l: cache[f"blocks.{l}.hook_resid_post"][0, -1, :].detach().float().cpu().numpy()
             for l in layers}
 
 def extract(model, prompts_by_run, states, structure, layers) -> list:
