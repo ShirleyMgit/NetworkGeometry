@@ -1,6 +1,7 @@
 import numpy as np
 from networkgeometry.types import State, DataMatrix
-from networkgeometry.geometry.part1 import circularity_by_layer
+from networkgeometry.geometry.part1 import circularity_by_layer, manifold_scores
+from networkgeometry.geometry.circle_fit import fit_circle
 from tests.fixtures import ring_matrix
 
 
@@ -41,3 +42,21 @@ def test_excluding_an_outlier_state_restores_high_circularity():
     cleaned = circularity_by_layer({3: dms}, excluded=("s5",))[0]
     assert cleaned.angular_order > 0.9
     assert cleaned.top2_variance_ratio > 0.9
+
+
+def test_manifold_scores_returns_ring_coords_and_kept_labels():
+    labels = [f"s{i}" for i in range(12)]
+    base = ring_matrix(d=40, n_states=12)
+    scores, kept = manifold_scores(base, labels)
+    assert scores.shape == (12, 2)
+    assert kept == labels
+    # a clean ring: the top-2 PC scores lie tightly on a fitted circle
+    assert fit_circle(scores).normalized_residual < 0.1
+
+
+def test_manifold_scores_drops_excluded_states():
+    labels = [f"s{i}" for i in range(12)]
+    base = ring_matrix(d=40, n_states=12)
+    scores, kept = manifold_scores(base, labels, excluded=("s5",))
+    assert scores.shape == (11, 2)
+    assert "s5" not in kept and len(kept) == 11

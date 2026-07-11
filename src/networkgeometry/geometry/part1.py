@@ -13,6 +13,23 @@ class LayerCircularity:
     top2_variance_ratio: float
 
 
+def manifold_scores(matrix, labels, excluded: tuple = (), centering: str = "mean"):
+    """Top-2 principal-component coordinates of the states — the points that trace
+    the PC1–PC2 ring in Part 1's manifold plots.
+
+    `matrix` is (d, n_states) with columns in `labels` order. Polysemous states in
+    `excluded` are dropped from the basis (and from the returned points). Returns
+    (scores of shape (n_kept, 2), kept_labels).
+    """
+    keep_mask = np.array([lbl not in excluded for lbl in labels])
+    basis_matrix = matrix[:, keep_mask]
+    centered = mean_center(basis_matrix, centering)
+    u = source_pcs(basis_matrix, centering)
+    scores = (u[:, :2].T @ centered).T                          # (n_kept_states, 2)
+    kept_labels = [lbl for lbl, keep in zip(labels, keep_mask) if keep]
+    return scores, kept_labels
+
+
 def circularity_by_layer(dms_by_layer: dict, excluded: tuple = (), centering: str = "mean") -> list:
     results = []
     for layer in sorted(dms_by_layer):
@@ -24,9 +41,9 @@ def circularity_by_layer(dms_by_layer: dict, excluded: tuple = (), centering: st
         basis_matrix = mean_matrix[:, keep_mask]
         canonical = np.array([s.canonical_index for s, keep in zip(all_states, keep_mask) if keep])
 
-        centered = mean_center(basis_matrix, centering)
+        scores, _ = manifold_scores(mean_matrix, [s.label for s in all_states], excluded, centering)
         u = source_pcs(basis_matrix, centering)
-        scores = (u[:, :2].T @ centered).T                      # (n_kept_states, 2)
+        centered = mean_center(basis_matrix, centering)
         energy = np.sum((u.T @ centered) ** 2, axis=1)
         ratio = float(energy[:2].sum() / energy.sum())
         fit = fit_circle(scores)

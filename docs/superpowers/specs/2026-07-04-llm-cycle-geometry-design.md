@@ -56,7 +56,7 @@ We test whether a frozen LLM represents cyclic concepts (day-of-week, month-of-y
 living things
 ├── animals
 │   ├── mammals:  dog, cat, horse
-│   └── birds:    robin, eagle, owl
+│   └── birds:    crow, eagle, owl
 └── plants
     ├── trees:    oak, pine, maple
     └── flowers:  rose, tulip, daisy
@@ -85,11 +85,11 @@ v1 uses the canonical sets above. A documented extension **densifies** cycles wi
 
 **Hard constraint — the state word must be the prompt's final token.** Extraction reads the activation at position `T−1` (§4.1), so that position must actually correspond to the state word, not to trailing punctuation or a word that follows it. Concretely: **no template may end with a period or any character after `{X}`**, and `{X}` must be the grammatically final word. This is not optional stylistic phrasing — it is what makes "final-token activation" mean "the state's activation" at all. Every template is verified by tokenizing a filled-in example and checking that `tokens[-1]` corresponds to the state word (or, for multi-token states like years, that it's the state's own last token — see the years exception below). A prior version of this pool ended every template in a period (e.g. `"Honestly, I love {X}."`), which — confirmed empirically against Gemma's tokenizer — makes the final token `'.'` for essentially every prompt, silently reading the wrong activation for all of Part 1 and Part 2. Any new template must be checked the same way before use.
 
-1. **Shared/neutral pool** — natural frames whose slot works **identically** for any single-token state (used for matched-context comparisons), state word last, no trailing punctuation:
-   - `"Honestly, I love {X}"`
-   - `"Let's talk about {X}"`
-   - `"Nothing beats {X}"`
-   - `"My favorite thing is {X}"` (≈8 templates)
+1. **Shared/neutral pool** — natural frames whose slot works **identically** for any single-token state (used for matched-context comparisons), state word last, no trailing punctuation. Two design rules: (a) frames are **topic-introducing ("about {X}") constructions**, which are the one family that stays both semantically neutral and grammatical across proper nouns, numbers, and bare nouns alike (`about Monday` / `about 1996` / `about crow`); (b) they vary in **sentence type** (imperative / declarative / question / reflection) so that the leave-one-run-out gate (§5.2) is a genuine *different-context* test. This also keeps them **preposition-free** in the slot-binding sense — no `on`/`in` that would differ by structure (`on Monday` vs `in January`).
+   - `"Tell me about {X}"`
+   - `"This is about {X}"`
+   - `"Have you heard about {X}"`
+   - `"I was just thinking about {X}"` (≈8 templates)
 2. **Structure-specific pool** — natural per-structure frames that necessarily differ in wording (used for different-context comparisons), same state-word-last constraint:
    - day: `"We'll meet on {day}"`, `"The concert is on {day}"`
    - month: `"We'll meet in {month}"`, `"The concert is in {month}"`

@@ -1,8 +1,8 @@
 shared:
-  - "Honestly, I love {X}"
-  - "Let's talk about {X}"
-  - "Nothing beats {X}"
-  - "My favorite thing is {X}"
+  - "Tell me about {X}"
+  - "This is about {X}"
+  - "Have you heard about {X}"
+  - "I was just thinking about {X}"
 specific:
   day:
     - "We'll meet on {X}"

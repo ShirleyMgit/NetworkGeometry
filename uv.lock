@@ -1308,7 +1308,7 @@ wheels = [
 
 [[package]]
 name = "networkgeometry"
-version = "0.1.2"
+version = "0.1.9"
 source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },

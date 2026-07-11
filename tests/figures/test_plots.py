@@ -1,9 +1,12 @@
 import numpy as np
 from pathlib import Path
-from networkgeometry.figures.part1_plots import plot_manifold, plot_circularity_by_layer
-from networkgeometry.figures.part2_plots import plot_auc_by_layer, plot_null_hist
+from networkgeometry.figures.part1_plots import (
+    plot_manifold, plot_circularity_by_layer, plot_correlation_matrix)
+from networkgeometry.figures.part2_plots import plot_auc_by_layer, plot_null_hist, plot_stage2_ladder
 from networkgeometry.geometry.part1 import LayerCircularity
 from networkgeometry.analysis.ladder import LadderResult
+from networkgeometry.analysis.stage2 import Stage2Row
+from tests.fixtures import ring_matrix
 
 def test_part1_and_part2_plots_write_files(tmp_path):
     scores = np.column_stack([np.cos(np.linspace(0, 6, 12)), np.sin(np.linspace(0, 6, 12))])
@@ -14,3 +17,27 @@ def test_part1_and_part2_plots_write_files(tmp_path):
     p3 = plot_auc_by_layer(ladder, ["month"], tmp_path / "a.png")
     p4 = plot_null_hist(np.random.default_rng(0).normal(0.5, 0.05, 500), 0.8, tmp_path / "n.png")
     assert all(Path(p).exists() for p in [p1, p2, p3, p4])
+
+def test_plot_correlation_matrix_writes_file(tmp_path):
+    A = ring_matrix(d=32, n_states=7)
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    path = plot_correlation_matrix(A, labels, tmp_path / "corr.png", title="day (layer 6)")
+    assert Path(path).exists()
+
+def test_plot_stage2_ladder_writes_one_line_per_comparison_row(tmp_path):
+    rows = [
+        Stage2Row("day (within)", 5, 0.9, 0.02),
+        Stage2Row("day (within)", 6, 0.92, 0.01),
+        Stage2Row("day -> month (matched)", 5, 0.8, 0.03, 0.01, 0.02, 0.05),
+        Stage2Row("day -> month (matched)", 6, 0.82, 0.02, 0.01, 0.02, 0.05),
+        Stage2Row("day -> flat", 6, 0.5, 0.05, 0.4, 0.4, 1.0),
+    ]
+    path = plot_stage2_ladder(rows, tmp_path / "stage2.png")
+    assert Path(path).exists()
+
+def test_plot_stage2_ladder_accepts_context_note(tmp_path):
+    rows = [Stage2Row("day -> month (matched)", 5, 0.8, 0.03, 0.01, 0.02, 0.05)]
+    path = plot_stage2_ladder(
+        rows, tmp_path / "stage2_note.png",
+        context_note="matched = shared frame; specific = per-structure frame")
+    assert Path(path).exists()
