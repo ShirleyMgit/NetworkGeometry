@@ -25,6 +25,14 @@ def test_plot_correlation_matrix_writes_file(tmp_path):
     path = plot_correlation_matrix(A, labels, tmp_path / "corr.png", title="day (layer 6)")
     assert Path(path).exists()
 
+def test_plot_correlation_matrix_accepts_caption_override(tmp_path):
+    A = ring_matrix(d=32, n_states=7)
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    path = plot_correlation_matrix(
+        A, labels, tmp_path / "corr_strict.png", title="day (strict, layer 14)",
+        caption="single paper-exact template")
+    assert Path(path).exists()
+
 def test_plot_stage2_ladder_writes_one_line_per_comparison_row(tmp_path):
     rows = [
         Stage2Row("day (within)", 5, 0.9, 0.02),
