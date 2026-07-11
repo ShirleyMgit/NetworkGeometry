@@ -14,13 +14,17 @@ class ModelChoice:
     hf_id: str | None
     n_layers: int | None
     fits: str
+    dtype: str = "bfloat16"   # torch dtype name; bf16 has fp32's exponent range (overflow-safe)
     supported: bool = True
 
 
 MODELS = {
-    "gemma-2-2b": ModelChoice("gemma-2-2b", "google/gemma-2-2b", 26, "free T4 (~4 GB)"),
-    "gemma-3-12b": ModelChoice("gemma-3-12b", "google/gemma-3-12b-pt", 48, "A100 (~24 GB)"),
-    "llama-3.1-8b": ModelChoice("llama-3.1-8b", "meta-llama/Llama-3.1-8B", 32, "L4/A100 (~16 GB)"),
+    # gemma-2-2b keeps fp16: its validated reproduction path, and its activations fit in fp16.
+    "gemma-2-2b": ModelChoice("gemma-2-2b", "google/gemma-2-2b", 26, "free T4 (~4 GB)", dtype="float16"),
+    # Gemma/Llama at 8B+ have massive outlier activations that OVERFLOW fp16 (-> inf ->
+    # "SVD did not converge"); bf16 (their native checkpoint dtype) avoids this.
+    "gemma-3-12b": ModelChoice("gemma-3-12b", "google/gemma-3-12b-pt", 48, "A100 (~24 GB)", dtype="bfloat16"),
+    "llama-3.1-8b": ModelChoice("llama-3.1-8b", "meta-llama/Llama-3.1-8B", 32, "L4/A100 (~16 GB)", dtype="bfloat16"),
     # The 12B "Gemma" is officially Gemma 3 — there is no Gemma 4. Llama 4 Scout is a very
     # new MoE model that TransformerLens does not support yet, so it is listed but disabled.
     "llama-4-scout": ModelChoice("llama-4-scout", None, None, "unsupported", supported=False),
@@ -52,5 +56,6 @@ def load_model(key: str = "gemma-2-2b", device: str = "cuda", dtype=None):
     choice = resolve_model(key)
     import torch
     from transformer_lens import HookedTransformer
+    resolved_dtype = dtype if dtype is not None else getattr(torch, choice.dtype)
     return HookedTransformer.from_pretrained_no_processing(
-        choice.hf_id, device=device, dtype=dtype or torch.float16)
+        choice.hf_id, device=device, dtype=resolved_dtype)
