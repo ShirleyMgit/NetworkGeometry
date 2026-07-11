@@ -23,3 +23,19 @@ strict:
   day: "The day of the week is {X}"
   month: "The month of the year is {X}"
   years: "In the year {X}"
+probe:
+  day:
+    - "The day of the week is {X}"
+    - "Today is {X}"
+  month:
+    - "The month of the year is {X}"
+    - "The current month is {X}"
+  years:
+    - "The year is {X}"
+    - "It is now the year {X}"
+  hierarchy:
+    - "The animal is {X}"
+    - "The animal shown here is {X}"
+  flat:
+    - "This is a {X}"
+    - "The object is a {X}"

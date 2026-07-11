@@ -17,3 +17,22 @@ def test_prompts_fill_slot_in_canonical_order():
     runs = prompts_for(s["day"], t["shared"])
     assert runs[0][0].endswith("Monday") or "Monday" in runs[0][0]
     assert len(runs[0]) == 7
+
+def test_hierarchy_is_three_animal_families():
+    s = load_structures()
+    labels = [st.label for st in s["hierarchy"].states]
+    assert labels == ["dog", "cat", "horse", "crow", "eagle", "owl", "salmon", "trout", "tuna"]
+
+def test_probe_pool_covers_every_structure_state_final():
+    t = load_templates()
+    probe = t["probe"]
+    assert set(probe) == {"day", "month", "years", "hierarchy", "flat"}
+    for frames in probe.values():
+        assert len(frames) == 2
+        assert all(frame.endswith("{X}") for frame in frames)
+
+def test_probe_prompts_end_in_the_state_word():
+    s = load_structures(); t = load_templates()
+    runs = prompts_for(s["hierarchy"], t["probe"]["hierarchy"])
+    assert runs[0][0] == "The animal is dog"
+    assert runs[0][-1] == "The animal is tuna"

@@ -21,6 +21,8 @@ def mean_state_matrices(model, names, layers, pool="shared"):
             return templates["specific"][name]
         if pool == "strict":
             return [templates["strict"][name]]     # single paper-exact template
+        if pool == "probe":
+            return templates["probe"][name]        # per-structure comprehension frames
         raise ValueError(f"unknown pool {pool!r}")
 
     out = {}
@@ -92,32 +94,34 @@ def run_part1_strict(model, layers, out_dir):
     (out_path / "part1_strict_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return results
 
+def _extract_ladder_pool(model, structures, names, template_for, layers):
+    """Per-structure leave-one-run-out activation matrices for the Stage-2 ladder,
+    with polysemous states dropped. Returns {(name, layer): [run_matrix, ...]}."""
+    from networkgeometry.extraction.activations import extract
+    runs = {}
+    for name in names:
+        structure = structures[name]
+        keep_mask = np.array([s.label not in structure.excluded for s in structure.states])
+        dms = extract(model, prompts_for(structure, template_for(name)),
+                      structure.states, name, layers)
+        for dm in dms:
+            runs.setdefault((name, dm.layer), []).append(dm.matrix[:, keep_mask])
+    return runs
+
 def run_part2(model, layers, out_dir):
     """Runs the full Stage-2 comparison ladder (spec §5.3): within-structure reference,
     matched- and different-context cross-cycle comparisons (both directions), and the
     circular-to-non-circular controls — one row per (comparison, layer)."""
     structures, templates = load_structures(), load_templates()
-    from networkgeometry.extraction.activations import extract
     from networkgeometry.analysis.stage2 import run_stage2_ladder
     from dataclasses import asdict
     import json
     from pathlib import Path
 
-    def _extract_pool(names, template_for):
-        runs = {}
-        for name in names:
-            structure = structures[name]
-            keep_mask = np.array([s.label not in structure.excluded for s in structure.states])
-            dms = extract(model, prompts_for(structure, template_for(name)),
-                          structure.states, name, layers)
-            for dm in dms:
-                runs.setdefault((name, dm.layer), []).append(dm.matrix[:, keep_mask])
-        return runs
-
-    shared_runs = _extract_pool(("day", "month", "years", "hierarchy", "flat"),
-                                 lambda name: templates["shared"])
-    specific_runs = _extract_pool(("day", "month"),
-                                   lambda name: templates["specific"][name])
+    shared_runs = _extract_ladder_pool(model, structures, ("day", "month", "years", "hierarchy", "flat"),
+                                        lambda name: templates["shared"], layers)
+    specific_runs = _extract_ladder_pool(model, structures, ("day", "month"),
+                                         lambda name: templates["specific"][name], layers)
 
     results = run_stage2_ladder(shared_runs, specific_runs, layers)
     out_path = Path(out_dir)
@@ -126,9 +130,30 @@ def run_part2(model, layers, out_dir):
         json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
     return results
 
+def run_part2_probe(model, layers, out_dir):
+    """Stage-2 comparison ladder on the comprehension-probe pool (spec §3.4·3, §5.3).
+    The probe frames are per-structure (category-declaring, no ordering cue), so there
+    is no shared frame: each cross-cycle test is a single row in the probe context, with
+    the within gate and controls all evaluated in that same context."""
+    structures, templates = load_structures(), load_templates()
+    from networkgeometry.analysis.stage2 import run_stage2_ladder
+    from dataclasses import asdict
+    import json
+    from pathlib import Path
+
+    probe_runs = _extract_ladder_pool(model, structures, ("day", "month", "years", "hierarchy", "flat"),
+                                       lambda name: templates["probe"][name], layers)
+
+    results = run_stage2_ladder(probe_runs, specific=None, layers=layers)
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    (out_path / "summary_probe.json").write_text(
+        json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
+    return results
+
 def main():
     parser = argparse.ArgumentParser(description="LLM cycle-geometry v1 runner")
-    parser.add_argument("--part", choices=["part1", "part1_strict", "part2"], required=True)
+    parser.add_argument("--part", choices=["part1", "part1_strict", "part2", "part2_probe"], required=True)
     parser.add_argument("--layers", type=int, nargs="+", default=list(range(26)))
     parser.add_argument("--out", default="results")
     args = parser.parse_args()
@@ -140,6 +165,8 @@ def main():
         run_part1_strict(model, args.layers, args.out)
     elif args.part == "part2":
         run_part2(model, args.layers, args.out)
+    elif args.part == "part2_probe":
+        run_part2_probe(model, args.layers, args.out)
 
 if __name__ == "__main__":
     main()

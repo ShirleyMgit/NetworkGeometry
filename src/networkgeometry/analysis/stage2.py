@@ -21,7 +21,16 @@ class Stage2Row:
     bonferroni_p: float | None = None
 
 
-def run_stage2_ladder(shared, specific, layers, n_perm=500, alpha=0.05, seed=0):
+def run_stage2_ladder(shared, specific=None, layers=None, n_perm=500, alpha=0.05, seed=0):
+    """Stage-2 comparison ladder (spec §5.3).
+
+    shared: {(structure, layer): [run, ...]} for the within gate, the cross-cycle
+        source/target, and the controls.
+    specific: optional per-structure pool; when given, each cross-cycle test yields
+        both a '(matched)' row (from shared) and a '(specific)' row (from specific).
+        When None (e.g. the comprehension-probe pool, which has no shared frame),
+        each cross-cycle test yields a single row in the `shared` pool's context.
+    """
     rng = np.random.default_rng(seed)
 
     within = {}    # (structure, layer) -> WithinResult
@@ -52,8 +61,13 @@ def run_stage2_ladder(shared, specific, layers, n_perm=500, alpha=0.05, seed=0):
         for layer in layers:
             if layer not in passed[source]:
                 continue
-            _cross_row(f"{source} -> {target} (matched)", source, target, shared, layer)
-            _cross_row(f"{source} -> {target} (specific)", source, target, specific, layer)
+            if specific is None:
+                # single-context pool (e.g. the per-structure probe pool): no shared
+                # frame, so there is no matched/specific contrast — one cross row.
+                _cross_row(f"{source} -> {target}", source, target, shared, layer)
+            else:
+                _cross_row(f"{source} -> {target} (matched)", source, target, shared, layer)
+                _cross_row(f"{source} -> {target} (specific)", source, target, specific, layer)
 
     for target in CONTROLS:
         for layer in layers:

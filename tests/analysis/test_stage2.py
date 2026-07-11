@@ -75,3 +75,25 @@ def test_stage2_ladder_gates_each_source_independently():
     assert "day -> month (specific)" not in labels
     assert "month -> day (matched)" in labels
     assert "month -> day (specific)" in labels
+
+
+def test_stage2_ladder_without_specific_pool_emits_single_cross_rows():
+    day, month = shared_subspace_pair(d=48, n_a=7, n_b=12)
+    years, hierarchy, flat = _controls()
+    probe_runs = {
+        ("day", 5): _runs(day), ("month", 5): _runs(month),
+        ("years", 5): _runs(years), ("hierarchy", 5): _runs(hierarchy), ("flat", 5): _runs(flat),
+    }
+
+    rows = run_stage2_ladder(probe_runs, None, layers=[5])
+    labels = {r.label for r in rows}
+
+    assert labels == {
+        "day (within)", "month (within)",
+        "day -> month", "month -> day",
+        "day -> years", "day -> hierarchy", "day -> flat",
+    }
+    assert not any("(matched)" in lbl or "(specific)" in lbl for lbl in labels)
+    by_label = {r.label: r for r in rows}
+    assert by_label["day -> month"].fdr_p is not None
+    assert by_label["day -> month"].bonferroni_p is not None

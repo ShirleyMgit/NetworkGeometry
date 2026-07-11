@@ -40,31 +40,28 @@ We test whether a frozen LLM represents cyclic concepts (day-of-week, month-of-y
 | Cycle | Day-of-week | 7 (Mon…Sun) | Ring (periodic) |
 | Cycle | Month | 12 (Jan…Dec) | Ring (periodic) |
 | Near-control (boundary axis) | Years, single-token (e.g. 1990–2025) | ~30 | Open 1D sequence |
-| Non-seq control (structured) | Hierarchy / taxonomy (3-level) | 12 leaves | Tree, non-ordered |
+| Non-seq control (structured) | Hierarchy / taxonomy (animals, 3 families) | 9 leaves | Tree, non-ordered |
 | Non-seq control (floor) | Flat unrelated set | 12 | Unstructured |
 
 - Years is **not** a "non-cyclic foil": per the Symmetry paper, months and years are the *same* translation-symmetric 1D object differing only in **boundary conditions** (months = closed Fourier series → ring; years = open-boundary Fourier series → rippled line). It is a **near-control on the periodicity/boundary axis** — we may find it *shares* the cycle subspace, which motivates Phase 3.
-- The **non-sequential** controls (hierarchy, flat) are the "should not share the sequence subspace" controls. **Hierarchy** has genuine (non-1D) internal structure — its 12 leaves carry *no* ordinal order among themselves — so a non-generalization result is meaningful ("represented, but not in the sequence subspace"); **flat** is an unstructured floor. The hierarchy must clear the within-structure gate (§5.3) for its null cross-AUC to be interpretable — taxonomies clear it reliably (LLMs represent categorical hierarchies robustly; Park et al., *Geometry of Categorical Concepts*).
+- The **non-sequential** controls (hierarchy, flat) are the "should not share the sequence subspace" controls. **Hierarchy** has genuine (non-1D) internal structure — its 9 leaves carry *no* ordinal order among themselves — so a non-generalization result is meaningful ("represented, but not in the sequence subspace"); **flat** is an unstructured floor. The hierarchy must clear the within-structure gate (§5.3) for its null cross-AUC to be interpretable — taxonomies clear it reliably (LLMs represent categorical hierarchies robustly; Park et al., *Geometry of Categorical Concepts*).
 - **Deferred (later extension):** a **community / flat-cluster** control and a **taller (deeper) hierarchy**. In v1 a shallow taxonomy and a flat-cluster set would be nearly redundant, so we start with one structured control (the taxonomy) and add graded-depth structure later. A **family/kinship** tree was considered and rejected as a non-seq control: its generation axis is *ordinal* and its gender axis is *linear*, so it would share the sequence subspace — noted instead as a candidate *ordinal-structure* probe for a later phase.
 - **Matching:** controls matched to cycles on set-size band, single-token-ness, corpus-frequency band, and template slots, so a null reflects *structure*, not surface confounds.
 
 **Concrete control sets (v1):**
 
-*Hierarchy* — 3-level living-things taxonomy, 12 single-token leaves; Gram matrix should show **nested-block** structure (mammals tight → animals looser → living-things loosest), *not* circulant banding:
+*Hierarchy* — animal taxonomy, 3 families of 3, 9 single-token leaves; Gram matrix should show **nested-block** structure (within-family tight → across-family looser), *not* circulant banding. Reduced from the earlier 4-family (animals + plants) tree so a single natural category frame — `"The animal is {X}"` — applies to **every** leaf (used by the comprehension-probe pool, §3.4·3):
 
 ```
-living things
-├── animals
-│   ├── mammals:  dog, cat, horse
-│   └── birds:    crow, eagle, owl
-└── plants
-    ├── trees:    oak, pine, maple
-    └── flowers:  rose, tulip, daisy
+animals
+├── mammals:  dog, cat, horse
+├── birds:    crow, eagle, owl
+└── fish:     salmon, trout, tuna
 ```
 
 *Flat* — 12 nouns each from a distinct category (no two share one, none overlapping the hierarchy set), no cluster structure: river, cloud, book, stone, road, key, ship, bridge, window, candle, mirror, ticket.
 
-Implementation caveats for all control sets: verify each word is a **single token** in Gemma's tokenizer and avoid **polysemy** (e.g. "orange" = fruit *and* color, or "saw" = tool *and* verb, would smuggle in extra structure). Hierarchy (living things) and flat (mixed, distinct categories) share no items.
+Implementation caveats for all control sets: verify each word is a **single token** in Gemma's tokenizer and avoid **polysemy** (e.g. "orange" = fruit *and* color, or "saw" = tool *and* verb, would smuggle in extra structure). Hierarchy (animals) and flat (mixed, distinct categories) share no items.
 
 ### 3.2 States are a config parameter (not constants)
 
@@ -81,7 +78,7 @@ v1 uses the canonical sets above. A documented extension **densifies** cycles wi
 
 **Hard constraint:** every run spans the **full, identical state set** of its structure (never a partial set) — this is what makes each run a complete `d × n_states` matrix and makes runs comparable.
 
-### 3.4 Two template pools
+### 3.4 Template pools
 
 **Hard constraint — the state word must be the prompt's final token.** Extraction reads the activation at position `T−1` (§4.1), so that position must actually correspond to the state word, not to trailing punctuation or a word that follows it. Concretely: **no template may end with a period or any character after `{X}`**, and `{X}` must be the grammatically final word. This is not optional stylistic phrasing — it is what makes "final-token activation" mean "the state's activation" at all. Every template is verified by tokenizing a filled-in example and checking that `tokens[-1]` corresponds to the state word (or, for multi-token states like years, that it's the state's own last token — see the years exception below). A prior version of this pool ended every template in a period (e.g. `"Honestly, I love {X}."`), which — confirmed empirically against Gemma's tokenizer — makes the final token `'.'` for essentially every prompt, silently reading the wrong activation for all of Part 1 and Part 2. Any new template must be checked the same way before use.
 
@@ -95,8 +92,16 @@ v1 uses the canonical sets above. A documented extension **densifies** cycles wi
    - month: `"We'll meet in {month}"`, `"The concert is in {month}"`
    - years: `"It happened in {years}"`, `"Everything changed back in {years}"`
    - hierarchy / flat: `"Yesterday I saw a {X}"`, `"Look, a {X}"` (≈8 per structure)
+3. **Comprehension-probe pool ("pool 2")** — per-structure, **category-declaring** frames, state word last. Motivation: the shared/specific pools introduce the state *neutrally* but never confirm the model actually engaged the concept. A frame that names the state's **category** — "the day of the week is {X}", "the animal is {X}" — lets us read the model's own continuation and judge comprehension (it recognizes Monday as a weekday, salmon as a fish), **without** naming any *ordering*. This is the key discipline: the frame declares the **kind** but says nothing about sequence (no "after/before/next"), so it cannot manufacture the ring geometry it is used to probe. Two frames per structure:
+   - day: `"The day of the week is {X}"`, `"Today is {X}"`
+   - month: `"The month of the year is {X}"`, `"The current month is {X}"`
+   - years: `"The year is {X}"`, `"It is now the year {X}"`
+   - hierarchy: `"The animal is {X}"`, `"The animal shown here is {X}"` (article-free — `eagle`/`owl` would break `a {X}`)
+   - flat: `"This is a {X}"`, `"The object is a {X}"` (flat nouns are all consonant-initial, so `a {X}` is grammatical)
 
-Runs are **paired by index across structures** (run `r` = the r-th template of each structure) so within- and cross-structure analyses share a fold structure and are directly comparable. Target ≈16 templates/runs per structure total.
+   Pool 2 is run through the **same Part-2 comparison ladder** (§5.3) as pool 1, but because its frames are per-structure there is no shared frame and hence **no matched/specific split** — each cross-cycle test yields a single row in the probe context. A dedicated run first **generates the model's continuation** for every (state, frame) so the responses can be read directly and comprehension judged by inspection (no automatic scoring).
+
+Runs are **paired by index across structures** (run `r` = the r-th template of each structure) so within- and cross-structure analyses share a fold structure and are directly comparable. Target ≈16 templates/runs per structure total for pools 1; pool 2 is deliberately small (2 frames/structure).
 
 ---
 
@@ -200,6 +205,8 @@ For each structure and layer, compute **within-structure, different-context AUC*
 `AUC₁(within) ≳ AUC₂ ≈ AUC₃ (cross-cycle) > AUC₄(years) > AUC₄(hierarchy) > AUC₄(flat) ≈ chance`
 
 Both cross-cycle directions are run (day→month and month→day).
+
+**Pool-2 (comprehension-probe) ladder.** The same ladder is also run on the comprehension-probe pool (§3.4·3). Because pool 2 has no shared frame, comparisons 2 and 3 collapse to a **single** cross-cycle row per direction (there is no matched-vs-specific contrast), and the within gate (comparison 1) and the controls (comparison 4) are all evaluated in the probe context. It answers a narrower question — *given prompts where we can read off that the model recognizes each state, is the cycle code still shared?* — and is reported alongside, not in place of, the pool-1 ladder.
 
 ### 5.4 `V`-side within-structure stability
 Same leave-one-run-out setup as comparison 1, read off the **`V` side**: does the *pattern over states* recur across contexts? A representational-stability score and the within reference for the feature side. **Never run across different cycles.**
