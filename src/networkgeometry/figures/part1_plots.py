@@ -40,8 +40,24 @@ def plot_circularity_by_layer(results, out_path, title=None) -> str:
     fig.savefig(out_path, dpi=150, bbox_inches="tight"); plt.close(fig)
     return str(out_path)
 
-def plot_correlation_matrix(matrix, labels, out_path, title=None) -> str:
-    """Heatmap of the n_states x n_states state correlation matrix at one layer."""
+CORRELATION_CAPTION = (
+    "Entry (i,j) = Pearson correlation between states i and j's residual-stream activation "
+    "vectors (across all d feature dimensions), averaged over templates, at this layer. "
+    "Diagonal = 1 by construction. A cyclic structure shows circulant banding: each state most "
+    "correlated with its cyclic neighbours, correlation falling with cyclic distance.")
+
+STRICT_CORRELATION_CAPTION = (
+    "Entry (i,j) = Pearson correlation between states i and j's residual-stream activation "
+    "vectors (across all d feature dimensions), from the single paper-exact template, at this "
+    "layer. Diagonal = 1 by construction. A cyclic structure shows circulant banding: each state "
+    "most correlated with its cyclic neighbours, correlation falling with cyclic distance.")
+
+def plot_correlation_matrix(matrix, labels, out_path, title=None, caption=None) -> str:
+    """Heatmap of the n_states x n_states state correlation matrix at one layer.
+
+    Pass ``caption`` to override the default defining caption — e.g.
+    ``STRICT_CORRELATION_CAPTION`` for the strict single-template leg, where
+    "averaged over templates" does not apply."""
     C = state_correlation(matrix)
     fig, ax = plt.subplots()
     im = ax.imshow(C, vmin=-1, vmax=1, cmap="RdBu_r")
@@ -49,10 +65,6 @@ def plot_correlation_matrix(matrix, labels, out_path, title=None) -> str:
     ax.set_yticks(range(len(labels))); ax.set_yticklabels(labels, fontsize=7)
     fig.colorbar(im, ax=ax, label="Pearson correlation")
     ax.set_title(title or "State correlation matrix")
-    _caption(fig,
-        "Entry (i,j) = Pearson correlation between states i and j's residual-stream activation "
-        "vectors (across all d feature dimensions), averaged over templates, at this layer. "
-        "Diagonal = 1 by construction. A cyclic structure shows circulant banding: each state most "
-        "correlated with its cyclic neighbours, correlation falling with cyclic distance.")
+    _caption(fig, caption or CORRELATION_CAPTION)
     fig.savefig(out_path, dpi=150, bbox_inches="tight"); plt.close(fig)
     return str(out_path)
