@@ -201,7 +201,9 @@ Grid sweep over $(r, \theta)$ within the circular manifold:
 - Synthetic: `"[very early/very late/morning/evening] on [Day]"`
 - Tests interpolation along the circular manifold
 
-### 5.2 Models Evaluated
+### 5.2 Task Accuracy (model performance)
+
+Fraction of prompts each model answers correctly (paper's Table 1). Accuracy = argmax over valid day/month tokens vs. ground truth — distinct from the average-logit-difference metric in §5.4.
 
 | Model | Weekdays Acc. | Months Acc. |
 |-------|:---:|:---:|

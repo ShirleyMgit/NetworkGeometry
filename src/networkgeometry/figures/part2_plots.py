@@ -50,11 +50,28 @@ def plot_cumulative_curves(curves, out_path) -> str:
     fig.savefig(out_path, dpi=150, bbox_inches="tight"); plt.close(fig)
     return str(out_path)
 
-def plot_stage2_ladder(rows, out_path, context_note=None) -> str:
+def _prompt_summary(templates) -> str:
+    """One caption sentence spelling out the concrete prompt each comparison uses.
+
+    within / matched / control rows all use the shared frame (one phrase); 'specific'
+    rows use each cycle's own frame (two phrases). Returns "" when templates is None.
+    """
+    if templates is None:
+        return ""
+    shared = templates["shared"][0]
+    day = templates["specific"]["day"][0]
+    month = templates["specific"]["month"][0]
+    return (
+        f'Prompts used — matched (shared frame, identical for both cycles): "{shared}".  '
+        f'specific (each cycle\'s own frame): day "{day}", month "{month}".  '
+        f'within-structure rows and the day -> years/hierarchy/flat controls use the shared frame.')
+
+def plot_stage2_ladder(rows, out_path, context_note=None, templates=None) -> str:
     """One AUC-vs-layer curve per Stage-2 comparison label (spec §5.3 table).
 
-    context_note: optional string appended to the caption to spell out, with concrete
-    example phrases, what the 'matched' and 'specific' contexts are.
+    templates: optional loaded templates.yaml dict; when given, the caption spells out
+    the concrete prompt phrase(s) each comparison row actually uses.
+    context_note: optional extra string appended to the caption.
     """
     by_label = {}
     for r in rows:
@@ -72,6 +89,9 @@ def plot_stage2_ladder(rows, out_path, context_note=None) -> str:
         "run-out ceiling for structure s; 'a -> b (matched)' / '(specific)' are cross-cycle tests "
         "in the shared / structure-specific template pools; 'day -> years/hierarchy/flat' are the "
         "non-cyclic controls. Cross rows appear only at layers passing the source's within gate.")
+    prompt_summary = _prompt_summary(templates)
+    if prompt_summary:
+        caption += "\n" + prompt_summary
     if context_note:
         caption += "\n" + context_note
     _caption(fig, caption)

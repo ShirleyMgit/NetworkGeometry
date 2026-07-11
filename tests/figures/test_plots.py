@@ -2,7 +2,8 @@ import numpy as np
 from pathlib import Path
 from networkgeometry.figures.part1_plots import (
     plot_manifold, plot_circularity_by_layer, plot_correlation_matrix)
-from networkgeometry.figures.part2_plots import plot_auc_by_layer, plot_null_hist, plot_stage2_ladder
+from networkgeometry.figures.part2_plots import (
+    plot_auc_by_layer, plot_null_hist, plot_stage2_ladder, _prompt_summary)
 from networkgeometry.geometry.part1 import LayerCircularity
 from networkgeometry.analysis.ladder import LadderResult
 from networkgeometry.analysis.stage2 import Stage2Row
@@ -40,4 +41,26 @@ def test_plot_stage2_ladder_accepts_context_note(tmp_path):
     path = plot_stage2_ladder(
         rows, tmp_path / "stage2_note.png",
         context_note="matched = shared frame; specific = per-structure frame")
+    assert Path(path).exists()
+
+_TEMPLATES = {
+    "shared": ["Tell me about {X}", "This is about {X}"],
+    "specific": {"day": ["We'll meet on {X}"], "month": ["We'll meet in {X}"]},
+}
+
+def test_prompt_summary_names_the_shared_and_specific_prompts():
+    summary = _prompt_summary(_TEMPLATES)
+    assert "Tell me about {X}" in summary       # shared / matched frame
+    assert "We'll meet on {X}" in summary        # day specific frame
+    assert "We'll meet in {X}" in summary        # month specific frame
+
+def test_prompt_summary_is_empty_without_templates():
+    assert _prompt_summary(None) == ""
+
+def test_plot_stage2_ladder_accepts_templates(tmp_path):
+    rows = [
+        Stage2Row("day (within)", 5, 0.9, 0.02),
+        Stage2Row("day -> month (specific)", 5, 0.8, 0.03, 0.01, 0.02, 0.05),
+    ]
+    path = plot_stage2_ladder(rows, tmp_path / "stage2_t.png", templates=_TEMPLATES)
     assert Path(path).exists()
