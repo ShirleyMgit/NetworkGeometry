@@ -27,6 +27,16 @@ We test whether a frozen LLM represents cyclic concepts (day-of-week, month-of-y
 - **Model:** `google/gemma-2-2b`, **frozen**. We never train the LLM; we only read (and, in Phase 4, write) residual-stream activations. Matches the Symmetry paper's primary model exactly.
 - **SAE:** Gemma Scope (open SAEs for every Gemma 2 2B layer). Used **only** for the Engels-style reproduction check in Part 1 (§4.4). *Not* an AUC substrate.
 - **Model-agnostic pipeline:** the model is a config value. Swapping in GPT-2-small (cheap CPU dev check) or Llama 3 8B / Mistral 7B (needed if Phase 4 requires strong modular-arithmetic accuracy) is a config change, not a refactor.
+- **Model menu (`networkgeometry/models.py`):** a small registry maps a short key to an HF id, so the notebook picks a model by name. v1 menu (base/pretrained variants only — instruct-tuning warps the concept geometry):
+
+  | key | HF id | layers | GPU (fp16) |
+  |---|---|---|---|
+  | `gemma-2-2b` *(default, matches the paper)* | `google/gemma-2-2b` | 26 | free T4 |
+  | `gemma-3-12b` | `google/gemma-3-12b-pt` | 48 | A100 |
+  | `llama-3.1-8b` | `meta-llama/Llama-3.1-8B` | 32 | L4 / A100 |
+  | `llama-4-scout` | — | — | listed but **unsupported** by TransformerLens 3.5.1 — `resolve_model` raises |
+
+  Only TransformerLens-loadable models qualify (the pipeline needs `HookedTransformer` hooks). The "12B Gemma" is officially **Gemma 3 12B** — there is no Gemma 4 — and is labelled `gemma-3-12b` everywhere. The layer list is derived from `model.cfg.n_layers`, not hardcoded. **Provenance:** the model key is written into every results file (a `"model"` field) and appended to every figure title, and results are namespaced under `results/<model>/`, so no figure or file is ambiguous about which model produced it. A single-model run still licenses only single-model claims (§5.5); the menu is for running the pipeline separately per model, not a pooled multi-model test.
 - **Extraction backend:** TransformerLens, with **read *and* write hooks** enabled from day one (write-hooks unused in Parts 1–2, required for Phase 4 causal patching).
 
 ---

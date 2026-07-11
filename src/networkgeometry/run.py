@@ -2,6 +2,10 @@ import argparse
 import numpy as np
 from networkgeometry.stimuli.definitions import load_structures, load_templates, prompts_for
 
+def _model_name(model) -> str:
+    """Short model name for tagging results/figures (e.g. 'gemma-2-2b')."""
+    return getattr(getattr(model, "cfg", None), "model_name", "unknown")
+
 def mean_state_matrices(model, names, layers, pool="shared"):
     """Per-structure mean (over templates) residual-stream activation matrix at each
     requested layer, plus the canonical-ordered state labels. For descriptive figures
@@ -60,8 +64,9 @@ def run_part1(model, layers, out_dir):
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    summary = {name: [asdict(lc) for lc in layer_circularity_list]
-               for name, layer_circularity_list in results.items()}
+    summary = {"model": _model_name(model),
+               "structures": {name: [asdict(lc) for lc in layer_circularity_list]
+                              for name, layer_circularity_list in results.items()}}
     (out_path / "part1_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return results
 
@@ -89,8 +94,9 @@ def run_part1_strict(model, layers, out_dir):
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    summary = {name: [asdict(lc) for lc in layer_circularity_list]
-               for name, layer_circularity_list in results.items()}
+    summary = {"model": _model_name(model),
+               "structures": {name: [asdict(lc) for lc in layer_circularity_list]
+                              for name, layer_circularity_list in results.items()}}
     (out_path / "part1_strict_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return results
 
@@ -127,7 +133,8 @@ def run_part2(model, layers, out_dir):
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     (out_path / "summary.json").write_text(
-        json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
+        json.dumps({"model": _model_name(model), "rows": [asdict(r) for r in results]}, indent=2),
+        encoding="utf-8")
     return results
 
 def run_part2_probe(model, layers, out_dir):
@@ -148,25 +155,24 @@ def run_part2_probe(model, layers, out_dir):
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     (out_path / "summary_probe.json").write_text(
-        json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
+        json.dumps({"model": _model_name(model), "rows": [asdict(r) for r in results]}, indent=2),
+        encoding="utf-8")
     return results
 
 def main():
     parser = argparse.ArgumentParser(description="LLM cycle-geometry v1 runner")
     parser.add_argument("--part", choices=["part1", "part1_strict", "part2", "part2_probe"], required=True)
-    parser.add_argument("--layers", type=int, nargs="+", default=list(range(26)))
-    parser.add_argument("--out", default="results")
+    parser.add_argument("--model", default="gemma-2-2b")
+    parser.add_argument("--layers", type=int, nargs="+", default=None)
+    parser.add_argument("--out", default=None)
     args = parser.parse_args()
-    from networkgeometry.extraction.activations import load_model
-    model = load_model()
-    if args.part == "part1":
-        run_part1(model, args.layers, args.out)
-    elif args.part == "part1_strict":
-        run_part1_strict(model, args.layers, args.out)
-    elif args.part == "part2":
-        run_part2(model, args.layers, args.out)
-    elif args.part == "part2_probe":
-        run_part2_probe(model, args.layers, args.out)
+    from networkgeometry.models import load_model, resolve_model
+    layers = args.layers if args.layers is not None else list(range(resolve_model(args.model).n_layers))
+    out = args.out if args.out is not None else f"results/{args.model}"
+    model = load_model(args.model)
+    runners = {"part1": run_part1, "part1_strict": run_part1_strict,
+               "part2": run_part2, "part2_probe": run_part2_probe}
+    runners[args.part](model, layers, out)
 
 if __name__ == "__main__":
     main()

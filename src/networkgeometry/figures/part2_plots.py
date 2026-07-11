@@ -66,12 +66,13 @@ def _prompt_summary(templates) -> str:
         f'specific (each cycle\'s own frame): day "{day}", month "{month}".  '
         f'within-structure rows and the day -> years/hierarchy/flat controls use the shared frame.')
 
-def plot_stage2_ladder(rows, out_path, context_note=None, templates=None) -> str:
+def plot_stage2_ladder(rows, out_path, context_note=None, templates=None, model_name=None) -> str:
     """One AUC-vs-layer curve per Stage-2 comparison label (spec §5.3 table).
 
     templates: optional loaded templates.yaml dict; when given, the caption spells out
     the concrete prompt phrase(s) each comparison row actually uses.
     context_note: optional extra string appended to the caption.
+    model_name: optional model tag appended to the figure title.
     """
     by_label = {}
     for r in rows:
@@ -83,7 +84,10 @@ def plot_stage2_ladder(rows, out_path, context_note=None, templates=None) -> str
         ax.plot(layers, aucs, "-o", label=label)
     ax.axhline(0.5, ls="--", color="gray", label="chance")
     ax.set_xlabel("layer"); ax.set_ylabel("AUC"); ax.legend(fontsize="small")
-    ax.set_title("Stage-2 comparison ladder: AUC vs layer")
+    title = "Stage-2 comparison ladder: AUC vs layer"
+    if model_name:
+        title += f"  ·  model: {model_name}"
+    ax.set_title(title)
     caption = (
         _AUC_DEF + " One line per comparison row of spec §5.3: '<s> (within)' is the leave-one-"
         "run-out ceiling for structure s; 'a -> b (matched)' / '(specific)' are cross-cycle tests "
