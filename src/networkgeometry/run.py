@@ -159,6 +159,44 @@ def run_part2_probe(model, layers, out_dir):
         encoding="utf-8")
     return results
 
+def within_auc_by_layer(model, layers, names=("day", "month")):
+    """Per-layer leave-one-run-out within-structure AUC (the Part-2 'self' AUC) for each named
+    structure, on the shared pool. No permutation testing, so it is cheap enough to drive layer
+    selection for the descriptive plots. Returns {name: {layer: auc}}."""
+    structures, templates = load_structures(), load_templates()
+    from networkgeometry.stats.within import within_structure_auc
+    runs = _extract_ladder_pool(model, structures, names, lambda name: templates["shared"], layers)
+    within = {name: {} for name in names}
+    for (name, layer), run_matrices in runs.items():
+        within[name][layer] = within_structure_auc(run_matrices).mean
+    return within
+
+
+def select_plot_layers(part1_results, within_by_layer, k=4, names=("day", "month")):
+    """Choose the k layers that score high on BOTH Part-1 circularity (angular order) and
+    Part-2 within-structure AUC, jointly across the named structures.
+
+    Each metric is min-max normalized across layers per structure, and a layer's score is the
+    minimum normalized value over every (structure, metric) pair, so a layer ranks highly only
+    when it is strong on all of them rather than on one alone. This deliberately avoids the
+    earliest layers, whose within-AUC is near-ceiling for trivial reasons but whose circularity
+    is low. Returns a sorted list of layer indices.
+    """
+    names = [name for name in names if name in within_by_layer and name in part1_results]
+    angular = {name: {lc.layer: lc.angular_order for lc in part1_results[name]} for name in names}
+    layers = sorted(set.intersection(*(set(angular[name]) for name in names)))
+
+    def _normalized(values):
+        low, high = min(values.values()), max(values.values())
+        span = high - low
+        return {layer: (value - low) / span if span else 0.0 for layer, value in values.items()}
+
+    metrics = [_normalized(angular[name]) for name in names] + \
+              [_normalized(within_by_layer[name]) for name in names]
+    score = {layer: min(metric[layer] for metric in metrics) for layer in layers}
+    return sorted(sorted(layers, key=lambda layer: score[layer], reverse=True)[:k])
+
+
 def main():
     parser = argparse.ArgumentParser(description="LLM cycle-geometry v1 runner")
     parser.add_argument("--part", choices=["part1", "part1_strict", "part2", "part2_probe"], required=True)
