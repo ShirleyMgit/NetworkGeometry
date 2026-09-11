@@ -42,15 +42,19 @@ def plot_circularity_by_layer(results, out_path, title=None) -> str:
 
 CORRELATION_CAPTION = (
     "Entry (i,j) = Pearson correlation between states i and j's residual-stream activation "
-    "vectors (across all d feature dimensions), averaged over templates, at this layer. "
-    "Diagonal = 1 by construction. A cyclic structure shows circulant banding: each state most "
-    "correlated with its cyclic neighbours, correlation falling with cyclic distance.")
+    "vectors (across all d feature dimensions), averaged over templates, at this layer. States "
+    "are mean-centered across states first, removing the shared residual-stream component that "
+    "would otherwise drive every correlation to ~1. Diagonal = 1 by construction. A cyclic "
+    "structure shows circulant banding: each state most correlated with its cyclic neighbours, "
+    "anti-correlated with the cyclically opposite states.")
 
 STRICT_CORRELATION_CAPTION = (
     "Entry (i,j) = Pearson correlation between states i and j's residual-stream activation "
     "vectors (across all d feature dimensions), from the single paper-exact template, at this "
-    "layer. Diagonal = 1 by construction. A cyclic structure shows circulant banding: each state "
-    "most correlated with its cyclic neighbours, correlation falling with cyclic distance.")
+    "layer. States are mean-centered across states first, removing the shared residual-stream "
+    "component that would otherwise drive every correlation to ~1. Diagonal = 1 by construction. "
+    "A cyclic structure shows circulant banding: each state most correlated with its cyclic "
+    "neighbours, anti-correlated with the cyclically opposite states.")
 
 def plot_correlation_matrix(matrix, labels, out_path, title=None, caption=None) -> str:
     """Heatmap of the n_states x n_states state correlation matrix at one layer.

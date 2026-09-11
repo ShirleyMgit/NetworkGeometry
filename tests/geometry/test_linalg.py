@@ -43,3 +43,14 @@ def test_state_correlation_cyclic_neighbours_more_correlated_than_opposite():
     A = ring_matrix(d=64, n_states=12, noise=0.0)
     C = state_correlation(A)
     assert C[0, 1] > C[0, 6]
+
+def test_state_correlation_removes_shared_component_that_would_saturate_it():
+    # The residual stream carries a large component shared by every state. Added here,
+    # raw np.corrcoef would read ~1 for every pair (structure buried); centering across
+    # states first must strip it so the ring structure is still visible.
+    A = ring_matrix(d=256, n_states=12, noise=0.05)
+    shared = np.random.default_rng(0).standard_normal((256, 1)) * 20.0
+    C = state_correlation(A + shared)
+    off_diagonal = C[~np.eye(12, dtype=bool)]
+    assert off_diagonal.mean() < 0.9      # not saturated near 1
+    assert C[0, 1] > C[0, 6]              # cyclic neighbours still beat antipodes
